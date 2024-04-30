@@ -5,20 +5,20 @@
 #include <signal.h>
 #include <unistd.h>
 #include <err.h>
-#include <gmodule.h>
-#include <glib.h>
-#include <glib/gprintf.h>
 
-#define BUFFER_SIZE 500
+#define BUFFER_SIZE 512
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc != 2)
+        errx(0, "Usage:\n"
+            "Arg 1 = Port number (e.g. 2048)");
+
     struct addrinfo hints;
     struct addrinfo *addr_list, *addr;
     int socket_id, client_socket_id;
     int res;
-    ssize_t request_size;
-    char request[BUFFER_SIZE];
+    pid_t child;
 
     //Get addresses list
     memset(&hints, 0, sizeof(struct addrinfo));
@@ -26,7 +26,7 @@ int main()
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
-    res = getaddrinfo(NULL, "2048", &hints, &addr_list);
+    res = getaddrinfo(NULL, argv[1], &hints, &addr_list);
 
     //If error, exit the program
     if (res != 0)
@@ -76,8 +76,8 @@ int main()
         exit(0);
     }
 
-    //Socket waiting for connections on port 2048
-    printf("Static Server\nListening to port 2048...\n");
+    //On SIGCHLD signal, call signal to properly exit the forked process
+    signal(SIGCHLD, SIG_IGN);
 
     //Allow multiple connections
     while(1)
@@ -90,37 +90,37 @@ int main()
             exit(0);
         }
 
-        //Get the request from the web client
-        //Loop until full message is read
-        GString *full_request = g_string_new("");
-        do
+        //Creates a new process, exit if it does not work
+        child = fork();
+        if(child == -1)
         {
-            request_size = read(client_socket_id, request, BUFFER_SIZE-1);
-            if (request_size == -1)
-            {
-                perror("read");
-                exit(0);
-            }
-            request[request_size] = '\0';
-            full_request = g_string_append(full_request, request);
-        } while (request_size > 0 &&
-                 g_str_has_suffix(full_request->str, "\r\n\r\n") == FALSE);
-
-        //Print the request and free full_request
-        printf("%s", full_request->str);
-
-        g_string_free(full_request, TRUE);
-        
-        //Create & Send a valid response.
-        char response[] = "HTTP/1.1 200 OK\r\n\r\nHello World!";
-        size_t response_size = strlen(response);
-        if (write(client_socket_id, response, response_size) != ((int) response_size))
-        {
-            fprintf(stderr, "partial/failed write\n");
+            fprintf(stderr, "Fork error\n");
             exit(0);
         }
 
-        //Close client sockets
+        //Child process
+        if(child == 0)
+        {
+            //Close server sockets
+            close(socket_id);
+
+            //Redirect client file descriptor to standard streams file descriptor
+            dup2(client_socket_id, STDIN_FILENO);
+            dup2(client_socket_id, STDOUT_FILENO);
+            dup2(client_socket_id, STDERR_FILENO);
+
+            //Execute bc command
+            execlp("bc", "bc", NULL);
+
+            //Close client sockets
+            close(client_socket_id);
+
+            //Exit the child process
+            exit(0);
+        }
+
+        //Parent process
+        //Close client socket
         close(client_socket_id);
     }
 

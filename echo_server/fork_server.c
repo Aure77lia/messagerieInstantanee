@@ -2,23 +2,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
-#include <signal.h>
 #include <unistd.h>
 #include <err.h>
-#include <gmodule.h>
-#include <glib.h>
-#include <glib/gprintf.h>
+#include <signal.h>
+#include "echo.h"
 
-#define BUFFER_SIZE 500
-
-int main()
+int main(int argc, char** argv)
 {
+    if (argc != 2)
+        errx(0, "Usage:\n"
+            "Arg 1 = Port number (e.g. 2048)");
+
     struct addrinfo hints;
     struct addrinfo *addr_list, *addr;
     int socket_id, client_socket_id;
     int res;
-    ssize_t request_size;
-    char request[BUFFER_SIZE];
+    pid_t child;
 
     //Get addresses list
     memset(&hints, 0, sizeof(struct addrinfo));
@@ -26,7 +25,7 @@ int main()
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
-    res = getaddrinfo(NULL, "2048", &hints, &addr_list);
+    res = getaddrinfo(NULL, argv[1], &hints, &addr_list);
 
     //If error, exit the program
     if (res != 0)
@@ -76,8 +75,10 @@ int main()
         exit(0);
     }
 
-    //Socket waiting for connections on port 2048
-    printf("Static Server\nListening to port 2048...\n");
+    printf("Waiting for connections...\n");
+
+    //On SIGCHLD signal, call signal to properly exit the forked process
+    signal(SIGCHLD, SIG_IGN);
 
     //Allow multiple connections
     while(1)
@@ -90,42 +91,35 @@ int main()
             exit(0);
         }
 
-        //Get the request from the web client
-        //Loop until full message is read
-        GString *full_request = g_string_new("");
-        do
+        //Creates a new process, exit if it does not work
+        child = fork();
+        if(child == -1)
         {
-            request_size = read(client_socket_id, request, BUFFER_SIZE-1);
-            if (request_size == -1)
-            {
-                perror("read");
-                exit(0);
-            }
-            request[request_size] = '\0';
-            full_request = g_string_append(full_request, request);
-        } while (request_size > 0 &&
-                 g_str_has_suffix(full_request->str, "\r\n\r\n") == FALSE);
-
-        //Get resource from the request
-        if (strlen(full_request->str) > 0)
-        {
-            gchar* resource = g_strndup(full_request->str+5, g_strstr_len(full_request->str, -1, " HTTP/")-full_request->str-5);
-            //Print resource and free full_request and resource
-            printf("%s\n", resource);
-
-            g_string_free(full_request, TRUE);
-            free(resource);
-            
-            //Create & Send a valid response.
-            char response[] = "HTTP/1.1 200 OK\r\n\r\nHello World!";
-            size_t response_size = strlen(response);
-            if (write(client_socket_id, response, response_size) != ((int) response_size))
-            {
-                fprintf(stderr, "partial/failed write\n");
-                exit(0);
-            }
+            fprintf(stderr, "Fork error\n");
+            exit(0);
         }
 
+        //Child process
+        if(child == 0)
+        {
+            //Close server sockets
+            close(socket_id);
+
+            printf("New connection (pid = %i)\n", getpid());
+
+            //Use echo() function on the client socket
+            echo(client_socket_id, client_socket_id);
+
+            //Close client sockets
+            close(client_socket_id);
+
+            printf("Close connection (pid = %i)\n", getpid());
+
+            //Exit the child process
+            exit(0);
+        }
+
+        //Parent process
         //Close client socket
         close(client_socket_id);
     }
