@@ -16,7 +16,6 @@ echo_test: echo_test.o echo.o
 fork_server: fork_server.o echo.o
 
 -include ${DEP}
-
 .PHONY: clean
 
 clean:
