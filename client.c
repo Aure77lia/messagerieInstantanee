@@ -8,18 +8,24 @@
 #include <pthread.h> //threading
 #include <unistd.h> // read(), write(), close()
 
-#define MAX 254 //maximum length for the pseudo
-#define PORT 8080 //port used
+//maximum length for the pseudo or the messages
+#define MAX 254
+//port used
+#define PORT 8080
 #define SA struct sockaddr
 
 pthread_t thread[1024]; 
 char pseudo[MAX];
 
+// This function converts "usleep" in miliseconds
 // sleep() only works in seconds, usleep works in nano seconde (and then, msleep works in miliseconds)
 int msleep(unsigned int tms) {
   return usleep(tms * 1000);
 }
 
+// The function 'recvMessage' receives messages from the server via the socket 'sock'. 
+// It reads data from the socket, clears the buffer and print the message received.
+// If the client left the conversation, it prints an exit message.
 void recvMessage(int sock)
 {
 	char buff[MAX];
@@ -37,6 +43,10 @@ void recvMessage(int sock)
 	}
 }
 
+
+// The function 'sendMessage' sends a message to the server via the socket 'sock'
+// It reads the message from the user, clears the buffer with the function 'bzero' and sends the message to the server.
+// If the message sent is /exit, it ends the function.
 void sendMessage(int sock)
 {
 	char buff[MAX];
@@ -62,6 +72,9 @@ void sendMessage(int sock)
 	}
 }
 
+
+// Creates the socket, establishes a connection with the server, prompts the user to enter a pseudonym and send it to the server.
+// It forks a child process for sending messages and another for receiving messages. It finally closes the socket.
 int main()
 {
 	int sock;
