@@ -15,5 +15,5 @@ make fork_server
 nc localhost -le numero de port choisi-
 ```
 
-Ce serveur renvoi a l'utilisateur son propre message
+Ce serveur renvoie a l'utilisateur son propre message
 
