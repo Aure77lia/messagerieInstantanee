@@ -29,13 +29,16 @@ int msleep(unsigned int tms) {
 void recvMessage(int sock)
 {
 	char buff[MAX];
+	ssize_t r;
 	while(1) {
         // like 'xor buff, buff'
 		bzero(buff, MAX);
-
-        read(sock, buff, sizeof(buff));
-		printf("%s", buff);
-
+        	r = read(sock, buff, sizeof(buff));
+		printf("%s",buff);
+		if (r == -1){
+			fprintf(stderr, "recvMessage : message could not be read\n");
+			exit(0);
+		}
 		if ((strncmp(buff, "/exit", 5)) == 0) {
 			printf("\nClient Exit...\n");
 			break;
@@ -51,6 +54,7 @@ void sendMessage(int sock)
 {
 	char buff[MAX];
 	int n;
+	ssize_t s;
 
 	while(1) { 
         // like 'xor buff, buff'
@@ -59,14 +63,18 @@ void sendMessage(int sock)
 		
 		//Message to send
 		printf("\33[2K\r");
-        while ((buff[n++] = getchar()) != '\n');
+        	while ((buff[n++] = getchar()) != '\n');
 		if(strlen(buff) != 1 && strlen(buff) <= 1020){
-			send(sock, buff, sizeof(buff), 0);
+			s = send(sock, buff, sizeof(buff), 0);
+			if(s == -1){
+				fprintf(stderr,"sendMessage : message could not be sent\n");
+				exit(0);
+			}
 		}
 		else 
 			printf("Invalid message size...\n");
 
-        if ((strncmp(buff, "/exit", sizeof("/exit"))) == 0) {
+        	if ((strncmp(buff, "/exit", sizeof("/exit"))) == 0) {
 			break;
 		}
 	}
@@ -98,21 +106,26 @@ int main()
 		perror("connection with server error");
 		exit(0);
 	}
-	else printf("connected to the server...\n");
+	else printf("connected to the server, to see all commands, enter /help a\n");
 
 	int n = 0;
 	printf("Please enter your pseudo : ");
 	while ((pseudo[n++] = getchar()) != '\n');
 	if(pseudo[strlen(pseudo) - 1] == '\n') pseudo[strlen(pseudo) - 1] = '\0';
-	write(sock, pseudo, sizeof(pseudo));
-
+	//add to the pseudo the pid of the user (process id of the user)
+	char id[10];
+	snprintf(id,10,"(%d)",getpid());
+	strcat(pseudo,id);
+	write(sock, pseudo, sizeof(pseudo));	
+		
 	pid_t pid = fork();
 	if (pid == -1){
 		perror("fork error");
 		return EXIT_FAILURE;
 	} else if (pid == 0) {
 		sendMessage(sock);
-	} else {
+	} else 
+	{
 		recvMessage(sock);
 	}
 	// close the socket

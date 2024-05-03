@@ -102,12 +102,8 @@ void * Dispatcher(){
 			msleep(20);
 
 			char *sender = parseWord(data, 0);
-			char *secondWord = parseWord(data, 1);
 			char *thirdWord = parseWord(data, 2);
-			char *fourthWord = parseWord(data, 3);
-			char *fithWord = parseWord(data, 4);
 			int clientSocket;
-			char *groupID;
 
 			//Gets the client's socketID
 			for(int i = 0; i < clientCount; i++){
@@ -116,73 +112,12 @@ void * Dispatcher(){
 				}
 			}
 
-			//Gets the client's groupID
-			for(int i = 0; i < clientCount; i++){
-				if ((strncmp(sender, Client[i+1].pseudo, strlen(Client[i+1].pseudo))) == 0){
-					groupID = Client[i].grpID;
-				}
-			}
-			
-			if ((strncmp(thirdWord, "/msg", 4)) == 0) {
-				int toRemove = strlen(sender) + strlen(secondWord) + strlen(thirdWord) + strlen(fourthWord) + 4; 
-				// removes /msg bob at the beginning 
-				memmove(data, data + toRemove, strlen(data));
-
-				// adds "bob to josh :" at the beginning 
-				strcpy(dataTMP, "\033[0;33m");
-				strcat(dataTMP, sender);
-				strcat(dataTMP, " to ");
-				strcat(dataTMP, fourthWord);
-				strcat(dataTMP, " : ");
-				strcat(dataTMP, data);
-
-				// if second word == pseudo ; then send message
-				for(int i = 0; i < clientCount; i++){
-					if ((strncmp(fourthWord, Client[i+1].pseudo, strlen(Client[i+1].pseudo))) == 0){
-						send(Client[i].sockID, dataTMP, strlen(dataTMP), 0);
-					}
-				}
-			}
-
-			else if ((strncmp(thirdWord, "/exit", 5)) == 0) {
+			if ((strncmp(thirdWord, "/exit", 5)) == 0) {
 				send(clientSocket, "/exit", sizeof("/exit"), 0);
 				strcpy(dataTMP, sender);
 				strcat(dataTMP, " has disconnected...\n");
 				broadcastClient(dataTMP);
 			}
-
-			//Sends data to the client's group
-			else if ((strncmp(thirdWord, "/grp", 4)) == 0) {
-				// If you want to change of group
-				if ((strncmp(fourthWord, "set", 3)) == 0){
-					fithWord[strlen(fithWord)-1] = '\0';
-					for(int i = 0; i < clientCount; i++){
-						if ((strncmp(sender, Client[i+1].pseudo, strlen(Client[i+1].pseudo))) == 0){
-							Client[i].grpID = fithWord;
-						}
-					}
-					groupID = fithWord;
-				}
-				// To send a message to all members of ur group
-				else {
-					memmove(data, data + 8 + strlen(sender), strlen(data));
-
-					strcpy(dataTMP, "\033[0;31m");
-					strcat(dataTMP, sender);
-					strcat(dataTMP, " to group ");
-					strcat(dataTMP, groupID);
-					strcat(dataTMP, " : ");
-					strcat(dataTMP, data);
-
-					for(int i = 0; i < clientCount; i++){
-						printf("%s : %s\n", Client[i+1].pseudo, Client[i].grpID);
-						if (strncmp(groupID, Client[i].grpID, strlen(groupID)) == 0){
-							send(Client[i].sockID, dataTMP, strlen(dataTMP), 0);
-						}
-					}
-				}
-			}
-
 			// Allows to list all online clients, and sends it to the client
 			else if ((strncmp(thirdWord, "/list", 5)) == 0) {
 				strcpy(dataTMP, "\033[0;32m");
@@ -202,8 +137,7 @@ void * Dispatcher(){
 
 			else if ((strncmp(thirdWord, "/help", 5)) == 0) {
 				strcpy(dataTMP, "\033[0;32m");
-				strcat(dataTMP, "Possible commands :\n\t/list to list all connected clients\n\t/msg <user> <message> to send private message to another user\n");
-				strcat(dataTMP, "\t/grp set <groupName> to set yourself into a group chat\n\t/grp <message> to send message to all members of your group\n");
+				strcat(dataTMP, "Possible commands :\n\t/list to list all connected clients\n");
 				strcat(dataTMP, "\t/exit to exit your session");
 				dataTMP[strlen(dataTMP)] = '\n';
 				for(int i = 0; i < clientCount; i++){
@@ -250,8 +184,8 @@ void * clientListener(void * ClientDetail){
 
 	pid_t pid = fork();
 	if(pid == -1){
-		return NULL;
 		perror("forking");
+		return NULL;
 	}
 	else if(pid == 0){
 		// child process | its goal is to listen & receive data and send it to the parser
@@ -273,18 +207,23 @@ void * clientListener(void * ClientDetail){
 		}
 	} 
 	else { 
+		int r;
 		// parent process | its goal is to parse the data given by the listener
 		while(1){
 			bzero(dataIn, 1024);
 			bzero(dataOut, 1024);
 			//int read = recv(clientSocket, dataIn, 1024, 0);
-			read(fd[0], dataIn, sizeof(dataIn));
-
+			r = read(fd[0], dataIn, sizeof(dataIn));
+			if (r == -1){
+				printf("client disconnected\n");
+				msleep(1000);
+				exit(0);
+			}
 			char *command = parseWord(dataIn, 2);
 			//printf("%s : %s", Client[index].pseudo, dataIn);
 
 			// Allows client to exit
-			if ((strncmp(command, "/exit", 5)) == 0) {
+			if (r == -1 || (strncmp(command, "/exit", 5)) == 0) {
 				pthread_mutex_lock(&mutex);
 				push(stack, &top, dataIn);
 				pthread_mutex_unlock(&mutex);
@@ -345,14 +284,24 @@ int main()
 		pthread_mutex_init(&mutex, NULL);
 		newClient = Client[clientCount].len;
 		Client[clientCount].sockID = accept(serverSocket, (struct sockaddr*) &Client[clientCount].clientAddr, &newClient);
+		if (Client[clientCount].sockID == -1){
+			fprintf(stderr, "cannot connect\n");
+			exit(0);
+		}
+		int thr;
 		Client[clientCount].index = clientCount + 1;
 		
-		pthread_create(&thread[clientCount], NULL, clientListener, (void *) &Client[clientCount]);
+		thr = pthread_create(&thread[clientCount], NULL, clientListener, (void *) &Client[clientCount]);
+		if (thr != 0)
+		{
+			fprintf(stderr, "can't create thread. \n");
+			exit(0);
+		}
 		
 		clientCount ++;
+		
 		pthread_mutex_destroy(&mutex);
 	}
-
 	// After chatting close the socket
 	close(serverSocket);
 }
