@@ -8,8 +8,8 @@
 #include <pthread.h> //threading
 #include <unistd.h> // read(), write(), close()
 
-#define MAX 254
-#define PORT 8080
+#define MAX 254 //maximum length for the pseudo
+#define PORT 8080 //port used
 #define SA struct sockaddr
 
 pthread_t thread[1024]; 
