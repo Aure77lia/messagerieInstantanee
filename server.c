@@ -29,6 +29,8 @@ struct client {
 struct client Client[1024];
 pthread_t thread[1024]; 
 
+// function used to store incoming messages in a stack.
+// when used it is always protected by a mutex to avoid concurrency issues when multiple threads try to modify the stack at the same time.
 int push(char stack[MAX][1024], int *top, char data[1024])
 {
       if(*top == MAX -1)
