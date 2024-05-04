@@ -19,6 +19,7 @@ static volatile int stopRunning = 0;
 pthread_t thread[1025]; 
 char pseudo[MAX];
 char messageBuffer[MAX];
+pthread_mutex_t mutex_comp_signal = PTHREAD_MUTEX_INITIALIZER;
 
 // This function converts "usleep" in miliseconds
 // sleep() only works in seconds, usleep works in nano seconde (and then, msleep works in miliseconds)
@@ -26,9 +27,11 @@ int msleep(unsigned int tms) {
   return usleep(tms * 1000);
 }
 
-void intHandler(int sig){
+void intHandler(){
+	pthread_mutex_lock(&mutex_comp_signal);
 	printf("Server : message flow stopped, to see the messages again, send a message\n");
 	stopRunning = 1;
+	pthread_mutex_unlock(&mutex_comp_signal);
 }
 
 
