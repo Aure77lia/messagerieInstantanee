@@ -11,12 +11,16 @@
 #define MAX 160
 #define PORT 8080
 #define SA struct sockaddr
+#define TIMEOUT_SECONDS 20
 
 int clientCount = 0, top = -1;
 char stack[MAX][1024];
 //static pthread_mutex_t mutex; 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-//static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static pthread_t timer;
+int serverSocket;
+
 
 struct client {
 	//int index;
@@ -47,7 +51,7 @@ int indexClientPseudo(char *pseudo){
     pthread_mutex_lock(&mutex);
     int index = -1;
     for(int i = 0; i < clientCount; i++){
-        if (strcmp(ClientList[i].pseudo, pseudo) == 0){
+		if (strcmp(ClientList[i].pseudo, pseudo) == 0){
             index = i ;
             break;
         }
@@ -69,6 +73,17 @@ int removeClient(int index) {
 	return 0 ;
 }
 
+void *timerThread(void *arg) {
+    sleep(TIMEOUT_SECONDS);
+    pthread_mutex_lock(&mutex);
+    if (clientCount == 0) {
+        printf("Aucun client connecté. Arrêt du serveur...\n");
+		close(serverSocket);
+        exit(0);
+    }
+    pthread_mutex_unlock(&mutex);
+    return NULL;
+}
 
 // The push function is used to store incoming messages in a stack.
 // when used it is always protected by a mutex to avoid concurrency issues when multiple threads try to modify the stack at the same time.
@@ -102,7 +117,6 @@ int msleep(unsigned int tms) {
 
 //Allows to catch a specific word of the data send by the user
 char * parseWord( const char str[], size_t pos ){
-    printf("test");
 	const char delim[] = " \t";
     char *inputCopy = malloc( ( strlen( str ) + 1 ) );
     char *p = NULL;
@@ -138,7 +152,6 @@ void broadcastClient(char *dataOut){
 
 // The Dispatcher function ensures the reception, analysis and distribution of messages between clients
 void * Dispatcher(){
-	printf("dispatcher");
 	char data[1024], dataTMP[1024];
 	int isNull;
 	while(1){
@@ -176,28 +189,30 @@ void * Dispatcher(){
 
 			}
 			// Allows to list all online clients, and sends it to the client
+			
+
 			else if ((strncmp(thirdWord, "/list", 5)) == 0) {
-				strcpy(dataTMP, "\033[0;32m");
-				printf("prout originel");
-				for (int i = 0; i < clientCount; i++) {
-					printf("prout %d", i);
-					if ((strncmp(ClientList[i+1].pseudo, "\0", 1)) != 0){
-						strcat(dataTMP, ClientList[i+1].pseudo);
-						dataTMP[strlen(dataTMP)] = '\n';
-					}
-				}
-				printf("prout final");
-				dataTMP[strlen(dataTMP)] = '\n';
-				for(int i = 0; i < clientCount; i++){
-					if ((strncmp(sender, ClientList[i+1].pseudo, strlen(ClientList[i+1].pseudo))) == 0){
-						send(ClientList[i].sockID, dataTMP, strlen(dataTMP), 0);
-					}
-				}
-			} 
+    			strcpy(dataTMP, "\033[0;32m");
+    			for (int i = 0; i < clientCount; i++) {
+        			if (ClientList[i].pseudo != NULL && strncmp(ClientList[i].pseudo, "\0", 1) != 0){
+            		strcat(dataTMP, ClientList[i].pseudo);
+            		strcat(dataTMP, "\n");
+        			}
+    			}
+    			send(clientSocket, dataTMP, strlen(dataTMP), 0); // Directly send to the requesting client
+			}
 
 			// Gives helpful commands
 			else if ((strncmp(thirdWord, "/help", 5)) == 0) {
 				strcpy(dataTMP, "\033[0;32m");
+            	strcat(dataTMP, "Possible commands :\n\t/list to list all connected clients\n");
+				strcat(dataTMP, "\t/exit to exit your session");
+				strcat(dataTMP, "\tctrl+c to stop message flow. To see messages again, send a message.");
+				//dataTMP[strlen(dataTMP)] = '\n';
+            	strcat(dataTMP, "\n");
+    			send(clientSocket, dataTMP, strlen(dataTMP), 0); // Directly send to the requesting client
+			}
+				/*strcpy(dataTMP, "\033[0;32m");
 				strcat(dataTMP, "Possible commands :\n\t/list to list all connected clients\n");
 				strcat(dataTMP, "\t/exit to exit your session");
 				strcat(dataTMP, "\tctrl+c to stop message flow. To see messages again, send a message.");
@@ -207,7 +222,7 @@ void * Dispatcher(){
 						send(ClientList[i].sockID, dataTMP, strlen(dataTMP), 0);
 					}
 				}
-			} 
+			} */
 
 			// Sends message to all connected clients
 			else {
@@ -227,7 +242,6 @@ void * Dispatcher(){
 // The clientListener function is used to listen for messages sent by a specific client and properly handle client disconnection.
 // Function handeling connexions
 void * clientListener(void * ClientDetail){
-	printf("Listener");
 	// Variables
 	struct client* clientDetail = (struct client*) ClientDetail;
 	//int index = clientDetail -> index;
@@ -319,7 +333,6 @@ int main()
 
 	// Socket create & verification
 	int serverSocket = socket(PF_INET, SOCK_STREAM, 0);
-
 	if (serverSocket == -1) {
 		printf("socket creation failed...\n");
 		return EXIT_FAILURE;
@@ -348,7 +361,19 @@ int main()
 	unsigned int newClient;
 	while(1){
 		pthread_mutex_init(&mutex, NULL);
+		
+		pthread_mutex_lock(&mutex);
+		if (clientCount==0){
+			if (pthread_create(&timer, NULL, timerThread, NULL) != 0) {
+                perror("Erreur lors de la création du thread du temporisateur");
+                pthread_mutex_unlock(&mutex);
+                return 1;
+            }
+		}
+		pthread_mutex_unlock(&mutex);
+
 		newClient = ClientList[clientCount].len;
+
 		ClientList[clientCount].sockID = accept(serverSocket, (struct sockaddr*) &ClientList[clientCount].clientAddr, &newClient);
 		if (ClientList[clientCount].sockID == -1){
 			fprintf(stderr, "cannot connect\n");
