@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <pthread.h> //threading
 #include <unistd.h> // read(), write(), close()
+#include <signal.h> //catch signals, here it will help catching ctr+c
 
 //maximum length for the pseudo or the messages
 #define MAX 254
@@ -14,13 +15,18 @@
 #define PORT 8080
 #define SA struct sockaddr
 
-pthread_t thread[1024]; 
+static volatile int stopRunning = 0;
+pthread_t thread[1025]; 
 char pseudo[MAX];
 
 // This function converts "usleep" in miliseconds
 // sleep() only works in seconds, usleep works in nano seconde (and then, msleep works in miliseconds)
 int msleep(unsigned int tms) {
   return usleep(tms * 1000);
+}
+
+void intHandler(int sig){
+	stopRunning = 1;
 }
 
 // The function 'recvMessage' receives messages from the server via the socket 'sock'. 
@@ -33,12 +39,16 @@ void recvMessage(int sock)
 	while(1) {
         // like 'xor buff, buff'
 		bzero(buff, MAX);
-        	r = read(sock, buff, sizeof(buff));
-		printf("%s",buff);
+		while (stopRunning){
+			msleep(100);
+		}
+		r = read(sock, buff, sizeof(buff));
 		if (r == -1){
 			fprintf(stderr, "recvMessage : message could not be read\n");
 			exit(0);
 		}
+		printf("%s",buff);
+		stopRunning = 0;
 		if ((strncmp(buff, "/exit", 5)) == 0) {
 			printf("\nClient Exit...\n");
 			break;
@@ -55,12 +65,11 @@ void sendMessage(int sock)
 	char buff[MAX];
 	int n;
 	ssize_t s;
-
 	while(1) { 
-        // like 'xor buff, buff'
+		// like 'xor buff, buff'
 		bzero(buff, MAX);
 		n = 0;
-		
+		//fgets(buff,sizeof(buff),stdin);	
 		//Message to send
 		printf("\33[2K\r");
         	while ((buff[n++] = getchar()) != '\n');
@@ -70,6 +79,7 @@ void sendMessage(int sock)
 				fprintf(stderr,"sendMessage : message could not be sent\n");
 				exit(0);
 			}
+			stopRunning = 0;
 		}
 		else 
 			printf("Invalid message size...\n");
@@ -85,6 +95,7 @@ void sendMessage(int sock)
 // It forks a child process for sending messages and another for receiving messages. It finally closes the socket.
 int main()
 {
+	signal(SIGINT,intHandler);
 	int sock;
 	struct sockaddr_in servaddr;
 
