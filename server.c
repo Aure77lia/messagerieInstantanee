@@ -148,6 +148,7 @@ void * Dispatcher(){
 				strcpy(dataTMP, "\033[0;32m");
 				strcat(dataTMP, "Possible commands :\n\t/list to list all connected clients\n");
 				strcat(dataTMP, "\t/exit to exit your session");
+				strcat(dataTMP, "\tctrl+c to stop message flow. To see messages again, send a message.");
 				dataTMP[strlen(dataTMP)] = '\n';
 				for(int i = 0; i < clientCount; i++){
 					if ((strncmp(sender, Client[i+1].pseudo, strlen(Client[i+1].pseudo))) == 0){
@@ -309,8 +310,8 @@ int main()
 		
 		clientCount ++;
 		
-		pthread_mutex_destroy(&mutex);
 	}
+	pthread_exit(NULL);
 	// After chatting close the socket
 	close(serverSocket);
 }
