@@ -87,7 +87,7 @@ void *timerThread(void *arg) {
 
 // The push function is used to store incoming messages in a stack.
 // when used it is always protected by a mutex to avoid concurrency issues when multiple threads try to modify the stack at the same time.
-int push(char stack[MAX][1024], int *top, char data[1024])
+/*int push(char stack[MAX][1024], int *top, char data[1024])
 {
       if(*top == MAX -1)
             return(-1);
@@ -96,7 +96,21 @@ int push(char stack[MAX][1024], int *top, char data[1024])
             strcpy(stack[*top], data);
             return(1);
       }
-}
+} 
+int push(char stack[MAX][1024], int *top, char data[1024]) {
+    pthread_mutex_lock(&mutex);
+    if (*top >= MAX - 1) {
+        pthread_mutex_unlock(&mutex);
+        fprintf(stderr, "Stack overflow prevented at push\n");
+        return -1;
+    } else {
+        *top = *top + 1;
+        strncpy(stack[*top], data, 1023);  // Safeguard against buffer overflow
+        stack[*top][1023] = '\0';  // Ensure null termination
+        pthread_mutex_unlock(&mutex);
+        return 1;
+    }
+} */
 
 // The pop function is used to extract messages so that they can be processed and distributed to clients by the Dispatcher function.
 int pop(char stack[MAX][1024], int *top, char data[1024])
@@ -143,12 +157,22 @@ char * parseWord( const char str[], size_t pos ){
 
 // The broadcastClient function is used to send a message to all clients connected to the instant messaging server.
 // *dataOut is the message to broadcast to all connected clients.
-void broadcastClient(char *dataOut){
-	char buffer[1024];
-	for(int i = 0; i < clientCount; i++){
-		send(ClientList[i].sockID, dataOut, sizeof(buffer), 0);
-	}
+
+void broadcastClient(char *dataOut) {
+    char *buffer = malloc(1024 * sizeof(char)); 
+    
+    if (buffer == NULL) {
+        fprintf(stderr, "Erreur : échec de l'allocation de mémoire\n");
+        return; // Gestion de l'erreur d'allocation de mémoire
+    }
+    
+    for (int i = 0; i < clientCount; i++) {
+        send(ClientList[i].sockID, dataOut, 1024, 0); 
+    }
+    
+    free(buffer); 
 }
+
 
 // The Dispatcher function ensures the reception, analysis and distribution of messages between clients
 void * Dispatcher(){
@@ -261,9 +285,14 @@ void * clientListener(void * ClientDetail){
 	ClientList[index].pseudo = pseudo;
 	strcpy(dataOut, ClientList[index].pseudo);
 	strcat(dataOut, " is connected !\n");
-	pthread_mutex_lock(&mutex);
-	push(stack, &top, dataOut);
-	pthread_mutex_unlock(&mutex);
+	
+	broadcastClient(dataOut);
+	
+	//pthread_mutex_lock(&mutex);
+	//push(stack, &top, dataOut);
+	//pthread_mutex_unlock(&mutex);
+
+	
 
 	pid_t pid = fork();
 	if(pid == -1){
@@ -301,9 +330,10 @@ void * clientListener(void * ClientDetail){
 			// printf("%s : %s", Client[index].pseudo, dataIn);
 			// Allows client to exit
 			if (r == -1 || (strncmp(command, "/exit", 5)) == 0) {
-				pthread_mutex_lock(&mutex);
-				push(stack, &top, dataIn);
-				pthread_mutex_unlock(&mutex);
+				broadcastClient(dataIn);
+				//pthread_mutex_lock(&mutex);
+				//push(stack, &top, dataIn);
+				//pthread_mutex_unlock(&mutex);
 				msleep(1000);
 				close(clientSocket);
 				clientDetail -> sockID = 0;
@@ -312,9 +342,10 @@ void * clientListener(void * ClientDetail){
 
 			// Send message to all clients
 			else{
-				pthread_mutex_lock(&mutex);
-				push(stack, &top, dataIn);
-				pthread_mutex_unlock(&mutex);
+				broadcastClient(dataIn);
+				//pthread_mutex_lock(&mutex);
+				//push(stack, &top, dataIn);
+				//pthread_mutex_unlock(&mutex);
 			}
 
 		}
