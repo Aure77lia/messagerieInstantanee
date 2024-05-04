@@ -102,7 +102,8 @@ int msleep(unsigned int tms) {
 
 //Allows to catch a specific word of the data send by the user
 char * parseWord( const char str[], size_t pos ){
-    const char delim[] = " \t";
+    printf("test");
+	const char delim[] = " \t";
     char *inputCopy = malloc( ( strlen( str ) + 1 ) );
     char *p = NULL;
 
@@ -137,6 +138,7 @@ void broadcastClient(char *dataOut){
 
 // The Dispatcher function ensures the reception, analysis and distribution of messages between clients
 void * Dispatcher(){
+	printf("dispatcher");
 	char data[1024], dataTMP[1024];
 	int isNull;
 	while(1){
@@ -160,7 +162,7 @@ void * Dispatcher(){
 			}*/
             //Gets the client's socketID
 			int indexClient = indexClientPseudo(sender);
-			pthread_mutex_lock(&mutex);
+			//pthread_mutex_lock(&mutex);
 			clientSocket = ClientList[indexClient].sockID;
 
 			if ((strncmp(thirdWord, "/exit", 5)) == 0) {
@@ -176,12 +178,15 @@ void * Dispatcher(){
 			// Allows to list all online clients, and sends it to the client
 			else if ((strncmp(thirdWord, "/list", 5)) == 0) {
 				strcpy(dataTMP, "\033[0;32m");
+				printf("prout originel");
 				for (int i = 0; i < clientCount; i++) {
+					printf("prout %d", i);
 					if ((strncmp(ClientList[i+1].pseudo, "\0", 1)) != 0){
 						strcat(dataTMP, ClientList[i+1].pseudo);
 						dataTMP[strlen(dataTMP)] = '\n';
 					}
 				}
+				printf("prout final");
 				dataTMP[strlen(dataTMP)] = '\n';
 				for(int i = 0; i < clientCount; i++){
 					if ((strncmp(sender, ClientList[i+1].pseudo, strlen(ClientList[i+1].pseudo))) == 0){
@@ -213,7 +218,7 @@ void * Dispatcher(){
 			}
 		}
 	}
-	pthread_mutex_unlock(&mutex);
+	//pthread_mutex_unlock(&mutex);
 
 	return NULL;
 }
@@ -222,11 +227,12 @@ void * Dispatcher(){
 // The clientListener function is used to listen for messages sent by a specific client and properly handle client disconnection.
 // Function handeling connexions
 void * clientListener(void * ClientDetail){
+	printf("Listener");
 	// Variables
 	struct client* clientDetail = (struct client*) ClientDetail;
 	//int index = clientDetail -> index;
-	int index = indexClientPseudo(client.pseudo);
 	int clientSocket = clientDetail -> sockID;
+	int index = indexClientSock(clientSocket);
 	ClientList[index].pseudo = "default pseudo";
 	clientDetail -> grpID = "all";
 	char pseudo[254], dataIn[1024], dataOut[1024];
