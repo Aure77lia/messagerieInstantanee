@@ -29,6 +29,8 @@ struct client {
 struct client Client[1024];
 pthread_t thread[1024]; 
 
+// The push function is used to store incoming messages in a stack.
+// when used it is always protected by a mutex to avoid concurrency issues when multiple threads try to modify the stack at the same time.
 int push(char stack[MAX][1024], int *top, char data[1024])
 {
       if(*top == MAX -1)
@@ -40,6 +42,7 @@ int push(char stack[MAX][1024], int *top, char data[1024])
       }
 }
 
+// The pop function is used to extract messages so that they can be processed and distributed to clients by the Dispatcher function.
 int pop(char stack[MAX][1024], int *top, char data[1024])
 {
       if(*top == -1)
@@ -82,6 +85,8 @@ char * parseWord( const char str[], size_t pos ){
     return p;
 }
 
+// The broadcastClient function is used to send a message to all clients connected to the instant messaging server.
+// *dataOut is the message to broadcast to all connected clients.
 void broadcastClient(char *dataOut){
 	char buffer[1024];
 	for(int i = 0; i < clientCount; i++){
@@ -89,6 +94,7 @@ void broadcastClient(char *dataOut){
 	}
 }
 
+// The Dispatcher function ensures the reception, analysis and distribution of messages between clients
 void * Dispatcher(){
 	char data[1024], dataTMP[1024];
 	int isNull;
@@ -101,6 +107,7 @@ void * Dispatcher(){
 			//pop(stack, &top, data);
 			msleep(20);
 
+			// identifies the sender of the message
 			char *sender = parseWord(data, 0);
 			char *thirdWord = parseWord(data, 2);
 			int clientSocket;
@@ -136,6 +143,7 @@ void * Dispatcher(){
 				}
 			} 
 
+			// Gives helpful commands
 			else if ((strncmp(thirdWord, "/help", 5)) == 0) {
 				strcpy(dataTMP, "\033[0;32m");
 				strcat(dataTMP, "Possible commands :\n\t/list to list all connected clients\n");
@@ -147,7 +155,8 @@ void * Dispatcher(){
 					}
 				}
 			} 
-			
+
+			// Sends message to all connected clients
 			else {
 				strcpy(dataTMP, "\033[0;31m");
 				strcat(dataTMP, data);
@@ -159,9 +168,11 @@ void * Dispatcher(){
 	return NULL;
 }
 
-// functon handeling connexions
+
+// The clientListener function is used to listen for messages sent by a specific client and properly handle client disconnection.
+// Function handeling connexions
 void * clientListener(void * ClientDetail){
-	// variables
+	// Variables
 	struct client* clientDetail = (struct client*) ClientDetail;
 	int index = clientDetail -> index;
 	int clientSocket = clientDetail -> sockID;
@@ -169,11 +180,11 @@ void * clientListener(void * ClientDetail){
 	clientDetail -> grpID = "all";
 	char pseudo[254], dataIn[1024], dataOut[1024];
 	
-	//pipe through fork
+	// pipe through fork
 	int fd[2];
 	pipe(fd);
 
-	//Waits for the pseudonym of the client
+	// Waits for the pseudonym of the client
 	int receved = recv(clientSocket, pseudo, 254, 0);
 
 	Client[index].pseudo = pseudo;
@@ -189,13 +200,13 @@ void * clientListener(void * ClientDetail){
 		return NULL;
 	}
 	else if(pid == 0){
-		// child process | its goal is to listen & receive data and send it to the parser
+		// Child process | its goal is to listen & receive data and send it to the parser
 
 		while(1){
 			bzero(dataIn, 1024);
 			bzero(dataOut, 1024);
 			
-			//always & forever lisen
+			// Always & forever lisen
 			receved = recv(clientSocket, dataIn, 1024, 0);
 			dataIn[receved] = '\0';
 
@@ -203,21 +214,20 @@ void * clientListener(void * ClientDetail){
 			strcat(dataOut, " : ");
 			strcat(dataOut, dataIn);
 
-			//sends data through the pipe
+			// Sends data through the pipe
 			write(fd[1], dataOut, sizeof(dataOut));
 		}
 	} 
 	else { 
 		int r;
-		// parent process | its goal is to parse the data given by the listener
+		// Parent process | its goal is to parse the data given by the listener
 		while(1){
 			bzero(dataIn, 1024);
 			bzero(dataOut, 1024);
 			//int read = recv(clientSocket, dataIn, 1024, 0);
 			r = read(fd[0], dataIn, sizeof(dataIn));
 			char *command = parseWord(dataIn, 2);
-			//printf("%s : %s", Client[index].pseudo, dataIn);
-			
+			// printf("%s : %s", Client[index].pseudo, dataIn);
 			// Allows client to exit
 			if (r == -1 || (strncmp(command, "/exit", 5)) == 0) {
 				pthread_mutex_lock(&mutex);
@@ -242,13 +252,15 @@ void * clientListener(void * ClientDetail){
 	return NULL;
 }
 
-// main
+// The main function initializes and configures the instant messaging server,
+//listens for incoming client connections, 
+// creates threads to handle each client connection, and manages message distribution between clients via the dispatcher thread
 int main()
 {
 	struct sockaddr_in servaddr;
 	pthread_t thread_dispatcher;
 
-	// socket create & verification
+	// Socket create & verification
 	int serverSocket = socket(PF_INET, SOCK_STREAM, 0);
 
 	if (serverSocket == -1) {
@@ -257,7 +269,7 @@ int main()
 	}
 	bzero(&servaddr, sizeof(servaddr));
 
-	// assign IP, PORT, PROTOCOL
+	// Assign IP, PORT, PROTOCOL
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	servaddr.sin_port = htons(PORT);
@@ -275,7 +287,7 @@ int main()
 
 	pthread_create(&thread_dispatcher, NULL, Dispatcher, NULL);
 
-	// threads each new connection to the server, and links a struct to each client
+	// Threads each new connection to the server, and links a struct to each client
 	unsigned int newClient;
 	while(1){
 		pthread_mutex_init(&mutex, NULL);
