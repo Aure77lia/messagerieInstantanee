@@ -115,8 +115,9 @@ void * Dispatcher(){
 			if ((strncmp(thirdWord, "/exit", 5)) == 0) {
 				send(clientSocket, "/exit", sizeof("/exit"), 0);
 				strcpy(dataTMP, sender);
-				strcat(dataTMP, " has disconnected...\n");
+				strcat(dataTMP, " disconnected...\n");
 				broadcastClient(dataTMP);
+				close(clientSocket);
 			}
 			// Allows to list all online clients, and sends it to the client
 			else if ((strncmp(thirdWord, "/list", 5)) == 0) {
@@ -214,14 +215,9 @@ void * clientListener(void * ClientDetail){
 			bzero(dataOut, 1024);
 			//int read = recv(clientSocket, dataIn, 1024, 0);
 			r = read(fd[0], dataIn, sizeof(dataIn));
-			if (r == -1){
-				printf("client disconnected\n");
-				msleep(1000);
-				exit(0);
-			}
 			char *command = parseWord(dataIn, 2);
 			//printf("%s : %s", Client[index].pseudo, dataIn);
-
+			
 			// Allows client to exit
 			if (r == -1 || (strncmp(command, "/exit", 5)) == 0) {
 				pthread_mutex_lock(&mutex);
@@ -239,9 +235,10 @@ void * clientListener(void * ClientDetail){
 				push(stack, &top, dataIn);
 				pthread_mutex_unlock(&mutex);
 			}
+
 		}
 	}
-	//pthread_exit(NULL); -> mettre pthread exit ne vire pas l'utilisateur quand il quitte (wtf)
+	pthread_exit(NULL); //-> mettre pthread exit ne vire pas l'utilisateur quand il quitte (wtf)
 	return NULL;
 }
 
