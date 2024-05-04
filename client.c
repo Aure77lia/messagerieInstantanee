@@ -18,6 +18,7 @@
 static volatile int stopRunning = 0;
 pthread_t thread[1025]; 
 char pseudo[MAX];
+char messageBuffer[MAX];
 
 // This function converts "usleep" in miliseconds
 // sleep() only works in seconds, usleep works in nano seconde (and then, msleep works in miliseconds)
@@ -26,8 +27,10 @@ int msleep(unsigned int tms) {
 }
 
 void intHandler(int sig){
+	printf("Server : message flow stopped, to see the messages again, send a message\n");
 	stopRunning = 1;
 }
+
 
 // The function 'recvMessage' receives messages from the server via the socket 'sock'. 
 // It reads data from the socket, clears the buffer and print the message received.
@@ -39,16 +42,27 @@ void recvMessage(int sock)
 	while(1) {
         // like 'xor buff, buff'
 		bzero(buff, MAX);
-		while (stopRunning){
-			msleep(100);
-		}
+
 		r = read(sock, buff, sizeof(buff));
 		if (r == -1){
 			fprintf(stderr, "recvMessage : message could not be read\n");
 			exit(0);
 		}
-		printf("%s",buff);
-		stopRunning = 0;
+
+		//if messages paused, store received messages in a buffer
+		if(stopRunning){
+			strcat(messageBuffer,buff);
+			char* trimmedBuff = buff+7;
+			if (strncmp(trimmedBuff,pseudo,strlen(pseudo)) == 0){
+				printf("%s",messageBuffer);
+				messageBuffer[0] = '\0';
+				stopRunning = 0;
+			}
+		}else{
+			//if not paused, print the message immediately
+			printf("%s",buff);
+		}
+
 		if ((strncmp(buff, "/exit", 5)) == 0) {
 			printf("\nClient Exit...\n");
 			break;
@@ -79,11 +93,10 @@ void sendMessage(int sock)
 				fprintf(stderr,"sendMessage : message could not be sent\n");
 				exit(0);
 			}
-			stopRunning = 0;
 		}
 		else 
 			printf("Invalid message size...\n");
-
+		
         	if ((strncmp(buff, "/exit", sizeof("/exit"))) == 0) {
 			break;
 		}
@@ -117,7 +130,7 @@ int main()
 		perror("connection with server error");
 		exit(0);
 	}
-	else printf("connected to the server, to see all commands, enter /help a\n");
+	else printf("connected to the server, to see all commands, enter /help\n");
 
 	int n = 0;
 	printf("Please enter your pseudo : ");
