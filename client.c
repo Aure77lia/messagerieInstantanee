@@ -100,7 +100,8 @@ void sendMessage(int sock)
 		else 
 			printf("Invalid message size...\n");
 		
-        	if ((strncmp(buff, "/exit", sizeof("/exit"))) == 0) {
+        	
+		if ((strncmp(buff, "/exit", 5)) == 0) {
 			break;
 		}
 	}
@@ -160,4 +161,5 @@ int main()
 	}
 	// close the socket
 	close(sock);
+	return 0;
 }
