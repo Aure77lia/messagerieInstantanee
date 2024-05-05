@@ -112,13 +112,13 @@ int removeClient(int index){
 		return -1;
 	}
 	if (index < 0 || index >= clientCount) {
-        //printf("removeClient : Index hors limites\n");
-        return -1;
-    }
-    for (int i = index; i < clientCount - 1; i++) {
-        ClientList[i] = ClientList[i + 1];
+        	//printf("removeClient : Index hors limites\n");
+        	return -1;
+   	 }
+    	for (int i = index; i < clientCount - 1; i++) {
+        	ClientList[i] = ClientList[i + 1];
 		//printf("hehe\n");
-    }
+    	}
 	clientCount--;
 	pthread_mutex_unlock(&mutex);
 	//printf("remove client : on est sorti du verrou !\n");
@@ -144,20 +144,20 @@ void *timerThread(void *arg) {
 bool isClientConnected(int sockID){
 	//printf("isClientConnected : avant le verrou\n");
 	pthread_mutex_lock(&mutex);
-	//printf("isClientConnected : dans le verrou\n");
-    bool isConnected = false;
+	printf("isClientConnected : dans le verrou\n");
+    	bool isConnected = false;
 	if(clientCount!=0){
-    for(int i = 0; i < clientCount; i++){
-        if (ClientList[i].sockID == sockID){
-            isConnected = true ;
-            break;
-        }
-    }
+    		for(int i = 0; i < clientCount; i++){
+        		if (ClientList[i].sockID == sockID){
+            			isConnected = true ;
+            			break;
+        		}
+    		}
 	}
-    pthread_mutex_unlock(&mutex);
+    	pthread_mutex_unlock(&mutex);
 	//printf("isClientConnected : après le verrou\n");
 
-    return isConnected;
+    	return isConnected;
 }
 
 
@@ -214,7 +214,7 @@ void broadcastClient(char *dataOut) {
 
 // The Dispatcher function ensures the reception, analysis and distribution of messages between clients
 void * dispatcher(char* dataIn){
-	printf("Dispatcher : se lance\n");
+	//printf("Dispatcher : se lance\n");
 	char* data;
 	int err;
 	// identifies the sender of the message
@@ -222,102 +222,99 @@ void * dispatcher(char* dataIn){
 	char *thirdWord = parseWord(dataIn, 3);
 	int clientSocket;
        	//Gets the client's socketID
+	printf("dispatcher : le nom du sender:%s\n",sender);
 	int indexClient = indexClientPseudo(sender);
-	if(indexClient==-1){
-		printf("dispatcher : erreur lors de la recherche d'index avec indexClientPseudo\n");
-		//exit(0);
-	}
+	if(indexClient != -1){
+		pthread_mutex_lock(&mutex);
 
-	pthread_mutex_lock(&mutex);
+		clientSocket = ClientList[indexClient].sockID;
 
-	clientSocket = ClientList[indexClient].sockID;
+		pthread_mutex_unlock(&mutex);
+		//printf("ici\n");
 
-	pthread_mutex_unlock(&mutex);
-	//printf("ici\n");
-
-	if ((strncmp(thirdWord, "/exit", 5)) == 0) {
-		data = malloc(sizeof(char)*sizeof("\033[0;37m"));
-		strcpy(data, "\033[0;37m");
-		err = send(clientSocket, "/exit", sizeof("/exit"), 0);
-		if (err == -1){
-			fprintf(stderr, "dispatcher : exit failed\n");
-		}
-		else {
-			data = realloc(data, sizeof(char) * (sizeof(sender)+sizeof(" disconnected..\n")));
-			strcat(data, sender);
-			strcat(data, " disconnected...\n");
-			broadcastClient(data);
-			pthread_mutex_lock(&mutex);
-			close(clientSocket);
-			pthread_mutex_unlock(&mutex);
-			removeClient(indexClient);
-			pthread_mutex_lock(&mutex);
-
-			if (clientCount == 0){
-				if (pthread_create(&timer, NULL, timerThread, NULL) != 0){
-					perror("dispatcher : error creation thread");
+		if ((strncmp(thirdWord, "/exit", 5)) == 0) {
+			data = malloc(sizeof(char)*sizeof("\033[0;37m"));
+			strcpy(data, "\033[0;37m");
+			err = send(clientSocket, "/exit", sizeof("/exit"), 0);
+			if (err == -1){
+				fprintf(stderr, "dispatcher : exit failed\n");
+			}
+			else {
+				data = realloc(data, sizeof(char) * (sizeof(sender)+sizeof(" disconnected..\n")));
+				strcat(data, sender);
+				strcat(data, " disconnected...\n");
+				broadcastClient(data);
+				pthread_mutex_lock(&mutex);
+				close(clientSocket);
+				pthread_mutex_unlock(&mutex);
+				removeClient(indexClient);
+				pthread_mutex_lock(&mutex);
+	
+				if (clientCount == 0){
+					if (pthread_create(&timer, NULL, timerThread, NULL) != 0){
+						perror("dispatcher : error creation thread");
+					}
 				}
+				pthread_mutex_unlock(&mutex);
+				//printf("si c toi batard \n");
+			}
+			free(data);
+		}
+		// Allows to list all online clients, and sends it to the client
+			
+		else if ((strncmp(thirdWord, "/list", 5)) == 0) {
+			data = malloc(sizeof(char)*sizeof("\033[0;37m"));
+			strcpy(data, "\033[0;37m");
+			//printf("fdp\n");
+			pthread_mutex_lock(&mutex);
+			//printf("salope\n");
+			for (int i = 0; i < clientCount; i++) {
+				data = realloc(data, sizeof(char) * (sizeof(ClientList[i].pseudo)+sizeof("\n")));
+     				strcat(data, ClientList[i].pseudo);
+				strcat(data, "\n");
 			}
 			pthread_mutex_unlock(&mutex);
-			//printf("si c toi batard \n");
+			//printf("nique ta mere\n");
+			err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
+			if (err == -1){
+				fprintf(stderr, "dispatcher : /list failed\n");
+			}
+			free(data);
 		}
-		free(data);
-	}
-	// Allows to list all online clients, and sends it to the client
-		
-	else if ((strncmp(thirdWord, "/list", 5)) == 0) {
-		data = malloc(sizeof(char)*sizeof("\033[0;37m"));
-		strcpy(data, "\033[0;37m");
-		//printf("fdp\n");
-		pthread_mutex_lock(&mutex);
-		//printf("salope\n");
-		for (int i = 0; i < clientCount; i++) {
-			data = realloc(data, sizeof(char) * (sizeof(ClientList[i].pseudo)+sizeof("\n")));
-     			strcat(data, ClientList[i].pseudo);
-			strcat(data, "\n");
-		}
-		pthread_mutex_unlock(&mutex);
-		//printf("nique ta mere\n");
-		err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
-		if (err == -1){
-			fprintf(stderr, "dispatcher : /list failed\n");
-		}
-		free(data);
-	}
 
-	// Gives helpful commands
-	else if ((strncmp(thirdWord, "/help", 5)) == 0) {
-		data = malloc(sizeof(char)*sizeof("\033[0;37m"));
-		strcpy(data, "\033[0;37m");
-		data = realloc(data, sizeof(char) * (sizeof("Possible commands :\n/help to see all possible commands\n\t/list to list all connected clients\n")+sizeof("\t/exit to exit your session\n")+sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
-
-		strcat(data, "Possible commands :\n\t/help to see all possible commands\n");
-		strcat(data, "\t/list to list all connected clients\n");
-		strcat(data, "\t/exit to exit your session\n");
-		strcat(data, "\tctrl+c to stop message flow. To see messages again, send a message.\n");
-		err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
-		if (err == -1){
-			fprintf(stderr, "dispatcher : /help failed\n");
-		}
-		free(data);
-	}
-			
-	// Sends message to all connected clients
-	else {
-		if(sizeof(dataIn) < 1000){
-		//	strcpy(dataIn, "\033[0;37m");
-		}
-		//printf("hello world\n");
-		pthread_mutex_unlock(&mutex);
-		//printf("hahahahahahaahahahahahah\n");
-		broadcastClient(dataIn);
-		pthread_mutex_lock(&mutex);
-		//printf("creve connard\n");
-	}
+		// Gives helpful commands
+		else if ((strncmp(thirdWord, "/help", 5)) == 0) {
+			data = malloc(sizeof(char)*sizeof("\033[0;37m"));
+			strcpy(data, "\033[0;37m");
+			data = realloc(data, sizeof(char) * (sizeof("Possible commands :\n/help to see all possible commands\n\t/list to list all connected clients\n")+sizeof("\t/exit to exit your session\n")+sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
 	
-	pthread_mutex_unlock(&mutex);
-	//("je hais la vie\n");
-
+			strcat(data, "Possible commands :\n\t/help to see all possible commands\n");
+			strcat(data, "\t/list to list all connected clients\n");
+			strcat(data, "\t/exit to exit your session\n");
+			strcat(data, "\tctrl+c to stop message flow. To see messages again, send a message.\n");
+			err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
+			if (err == -1){
+				fprintf(stderr, "dispatcher : /help failed\n");
+			}
+			free(data);
+		}
+				
+		// Sends message to all connected clients
+		else {
+			if(sizeof(dataIn) < 1000){
+			//	strcpy(dataIn, "\033[0;37m");
+			}
+			//printf("hello world\n");
+			pthread_mutex_unlock(&mutex);
+			//printf("hahahahahahaahahahahahah\n");
+			broadcastClient(dataIn);
+			pthread_mutex_lock(&mutex);
+			//printf("creve connard\n");
+		}
+		
+		pthread_mutex_unlock(&mutex);
+		//("je hais la vie\n");
+	}else printf("dispatcher : erreur lors de la recherche d'index avec indexClientPseudo\n");
 	return NULL;
 }
 
@@ -386,10 +383,9 @@ void * clientListener(void * ClientDetail){
 		// Child process | its goal is to listen & receive data and send it to the parser
 
 		while(isClientConnected(clientDetail->sockID)){
-			sleep(1); // pour ne pas bloquer en boucle
 			bzero(dataIn, 1024);
 			bzero(dataOut, 1024);
-			
+			printf("boucle 1 sockID :%d\n",clientDetail->sockID);	
 			// Always & forever listen
 			receved = recv(clientSocket, dataIn, 1024, 0);
 		
@@ -399,24 +395,28 @@ void * clientListener(void * ClientDetail){
 			strcat(dataOut, ClientList[index].pseudo);
 			strcat(dataOut, " : ");
 			strcat(dataOut, dataIn);
-
+			//printf("boucle 1 : %s\n",dataOut);
 			// Sends data through the pipe
 			write(fd[1], dataOut, sizeof(dataOut));
 		}
+		printf("clientListener : boucle 1 ferme\n");
 	} 
 	else { 
 		int r;
 		// Parent process | its goal is to parse the data given by the listener
-		while(1){
+		while(isClientConnected(clientDetail->sockID)){
 			bzero(dataIn, 1024);
 			bzero(dataOut, 1024);
+			printf("boucle 2 sockID :%d\n",clientDetail->sockID);	
 			//int read = recv(clientSocket, dataIn, 1024, 0);
 			r = read(fd[0], dataIn, sizeof(dataIn));
 			// Allows client to exit
 			if (r == -1) {
 				msleep(1000);
 				close(clientSocket);
+				printf("clientListener boucle2 : on entre dans remove client!!\n");
 				removeClient(clientDetail->sockID);
+				printf("clientListener boucle2 : on sort de remove client!!\n");
 				clientDetail -> sockID = 0;
 				break;
 			}
@@ -427,8 +427,10 @@ void * clientListener(void * ClientDetail){
 			}
 
 		}
+		printf("clientListener : boucle 2 ferme\n");
 	}
 	pthread_exit(NULL); //-> mettre pthread exit ne vire pas l'utilisateur quand il quitte (wtf)
+	printf("clientListener : ferme\n");
 	return NULL;
 }
 
@@ -487,67 +489,74 @@ int main()
 		pthread_mutex_unlock(&mutex);
 
 		
-	while (isServRunning) {
-    // Effacer l'ensemble des descripteurs de fichiers à surveiller
-    FD_ZERO(&readfds);
+		while (isServRunning) {
+    			// Effacer l'ensemble des descripteurs de fichiers à surveiller
+    			FD_ZERO(&readfds);
 
-    // Ajouter le socket du serveur à l'ensemble
-    FD_SET(serverSocket, &readfds);
-    int maxfd = serverSocket;
+    			// Ajouter le socket du serveur à l'ensemble
+   		 	FD_SET(serverSocket, &readfds);
+    			int maxfd = serverSocket;
 
-	pthread_mutex_lock(&mutex);
-    for (int i = 0; i < clientCount; i++) {
-        FD_SET(ClientList[i].sockID, &readfds);
-        if (ClientList[i].sockID > maxfd) {
-            maxfd = ClientList[i].sockID;
-        }
-    }
+			pthread_mutex_lock(&mutex);
+   		 	for (int i = 0; i < clientCount; i++) {
+       			 	FD_SET(ClientList[i].sockID, &readfds);
+        			if (ClientList[i].sockID > maxfd) {
+           				maxfd = ClientList[i].sockID;
+        			}
+    			}
 
-	pthread_mutex_unlock(&mutex);
+			pthread_mutex_unlock(&mutex);
 
-    // Attendre une activité sur un des descripteurs de fichiers
-    activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
-    if ((activity < 0) && (errno != EINTR)) {
-        perror("Erreur lors de la sélection");
-        exit(EXIT_FAILURE);
-    }
+   		 	// Attendre une activité sur un des descripteurs de fichiers
+    			activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
+    			if ((activity < 0) && (errno != EINTR)) {
+        			perror("Erreur lors de la sélection");
+        			exit(EXIT_FAILURE);
+    			}
 
-    // Si une activité est détectée sur le socket du serveur, cela signifie une nouvelle connexion entrante
-    if (FD_ISSET(serverSocket, &readfds)) {
-        struct sockaddr_in clientAddr;
-        int clientAddrLen = sizeof(clientAddr);
+    			// Si une activité est détectée sur le socket du serveur, cela signifie une nouvelle connexion entrante
+    			if (FD_ISSET(serverSocket, &readfds)) {
+        			struct sockaddr_in clientAddr;
+        			int clientAddrLen = sizeof(clientAddr);
         
-        // Accepter la nouvelle connexion
-        int newClientSocket = accept(serverSocket, (struct sockaddr*) &clientAddr, &clientAddrLen);
-        if (newClientSocket == -1) {
-            perror("Erreur lors de l'acceptation de la connexion");
-            continue; // Passer à la prochaine itération de la boucle
-        }
+       		 		// Accepter la nouvelle connexion
+        			int newClientSocket = accept(serverSocket, (struct sockaddr*) &clientAddr, &clientAddrLen);
+        			if (newClientSocket == -1) {
+            				perror("Erreur lors de l'acceptation de la connexion");
+            				continue; // Passer à la prochaine itération de la boucle
+        			}
 
-        // Ajouter le nouveau client à la liste des clients
-        pthread_mutex_lock(&mutex);
-        ClientList[clientCount].sockID = newClientSocket;
-		sockList[sockCount]=newClientSocket;
-		sockCount++;
-        clientCount++;
-        pthread_mutex_unlock(&mutex);
+        			// Ajouter le nouveau client à la liste des clients
+        			pthread_mutex_lock(&mutex);
+				printf("est ce que j ai des soucis ici ?\n");
+        			ClientList[clientCount].sockID = newClientSocket;
+				printf("main 1\n");
+				sockList[sockCount]=newClientSocket;
+				printf("main 2\n");
+				sockCount++;
+				printf("main 3\n");
+        			clientCount++;
+				printf("main 4\n");
+        			pthread_mutex_unlock(&mutex);
         
-        // Ajouter le nouveau client à l'ensemble des descripteurs de fichiers à surveiller
-        FD_SET(newClientSocket, &readfds);
-        if (newClientSocket > maxfd) {
-            maxfd = newClientSocket;
-        }
+        			// Ajouter le nouveau client à l'ensemble des descripteurs de fichiers à surveiller
+        			FD_SET(newClientSocket, &readfds);
+        			if (newClientSocket > maxfd) {
+            				maxfd = newClientSocket;
+        			}
 
-        // Créer un thread pour gérer la connexion du nouveau client
-        int thr = pthread_create(&thread[clientCount - 1], NULL, clientListener, (void *)&ClientList[clientCount - 1]);
-        if (thr != 0) {
-            fprintf(stderr, "Erreur lors de la création du thread client\n");
-            exit(EXIT_FAILURE);
-        }
-    }
-}
+        			// Créer un thread pour gérer la connexion du nouveau client
+        			int thr = pthread_create(&thread[clientCount - 1], NULL, clientListener, (void *)&ClientList[clientCount - 1]);
+        			if (thr != 0) {
+            				fprintf(stderr, "Erreur lors de la création du thread client\n");
+            				exit(EXIT_FAILURE);
+        			}
+    			}
+		}
 
-	pthread_exit(NULL);
-	close(serverSocket);
-}
+		printf("main : fin boucle interne\n");
+		pthread_exit(NULL);
+		close(serverSocket);
+	}
+	printf("wouhou le serveur est ferme!!");
 }
