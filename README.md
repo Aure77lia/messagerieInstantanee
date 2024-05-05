@@ -9,7 +9,7 @@ make server
 ```bash
 ./server
 ```
-* *attention : le serveur se lance sur le port 8080* *
+*attention : le serveur se lance sur le port 8080*
 ### lancer le client seulement
 - pour connecter un client au serveur, dans une autre console, compiler client.c avec la commande :
 ```bash
