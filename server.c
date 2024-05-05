@@ -18,12 +18,10 @@
 #define TIMEOUT_SECONDS 20
 
 int clientCount = 0, top = -1, sockCount =0;
-//char stack[MAX][1024];
-//static pthread_mutex_t mutex; 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 bool isServRunning = true ;
-static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 static pthread_t timer;
+static pthread_t recevoirData;
 int serverSocket;
 int sockList[1024];
 
@@ -47,9 +45,7 @@ struct client ClientList[1024];
 pthread_t thread[1024];
 
 int indexClientSock(int sockID){
-    //printf("indexClientSock : avant le verrou\n");
 	pthread_mutex_lock(&mutex);
-	//printf("indexClientSock : dans le verrou\n");
     int index = -1;
 	if(clientCount==0){
 		perror("IndexClientSock : pas de client connecté");
@@ -62,11 +58,10 @@ int indexClientSock(int sockID){
 		}
 	}
 	if(index==-1){
-		perror("client non trouvé");
+		perror("indexClientSock : client not found");
 		return -1;
 	}
     pthread_mutex_unlock(&mutex);
-	//printf("indexClientSock : sorti du verrou\n");
     return index;
 }
 
@@ -82,9 +77,7 @@ void closeServer(){
 }
 
 int indexClientPseudo(char *pseudo){
-    //printf("indexCLientPseudo : avant le verrou\n");
 	pthread_mutex_lock(&mutex);
-	//printf("indexCLientPseudo : dans le verrou\n");
 
     int index = -1;
     if(clientCount==0){
@@ -99,7 +92,6 @@ int indexClientPseudo(char *pseudo){
 		}
 	}
 	pthread_mutex_unlock(&mutex);
-	printf("indexCLientPseudo : après le verrou\n");
 	if(index==-1){
 		printf("indexClientPseudo : client non trouvé !\n");
 	}
@@ -107,29 +99,23 @@ int indexClientPseudo(char *pseudo){
 }
 
 int removeClient(int index){
-	//printf("remove client : avant lock\n");;
 	pthread_mutex_lock(&mutex);
-	//printf("remove client : on est entre dans le verrou !\n");
 	if(clientCount==0){
-		//printf("removeClient : pas de client à remove !\n");
 		return -1;
 	}
 	if (index < 0 || index >= clientCount) {
-        	//printf("removeClient : Index hors limites\n");
         	return -1;
    	 }
     	for (int i = index; i < clientCount - 1; i++) {
         	ClientList[i] = ClientList[i + 1];
-		//printf("hehe\n");
     	}
 	clientCount--;
 	pthread_mutex_unlock(&mutex);
-	//printf("remove client : on est sorti du verrou !\n");
 
 	return 0 ;
 }
 
-void *timerThread(void *arg) {
+void *timerThread() {
     sleep(TIMEOUT_SECONDS);
 
     pthread_mutex_lock(&mutex);
@@ -144,9 +130,7 @@ void *timerThread(void *arg) {
 }
 
 bool isClientConnected(int sockID){
-	//printf("isClientConnected : avant le verrou\n");
 	pthread_mutex_lock(&mutex);
-	printf("isClientConnected : dans le verrou\n");
     	bool isConnected = false;
 	if(clientCount!=0){
     		for(int i = 0; i < clientCount; i++){
@@ -157,7 +141,6 @@ bool isClientConnected(int sockID){
     		}
 	}
     	pthread_mutex_unlock(&mutex);
-	//printf("isClientConnected : après le verrou\n");
 
     	return isConnected;
 }
@@ -199,9 +182,7 @@ char * parseWord( const char str[], size_t pos ){
 // *dataOut is the message to broadcast to all connected clients.
 
 void broadcastClient(char *dataOut) {
-	//printf("broadcast : avant verrou \n");
 	pthread_mutex_lock(&mutex);
-	//printf("broadcast : dans verrou \n");
 
     	for (int i = 0; i < clientCount; i++) {
         	if (send(ClientList[i].sockID, dataOut, 1024, 0) == -1){
@@ -209,14 +190,12 @@ void broadcastClient(char *dataOut) {
 		}
     	}
 	pthread_mutex_unlock(&mutex);
-	//printf("broadcast : après verrou \n");
     	printf("%s", dataOut);
 }
 
 
 // The Dispatcher function ensures the reception, analysis and distribution of messages between clients
 void * dispatcher(char* dataIn){
-	//printf("Dispatcher : se lance\n");
 	char* data;
 	int err;
 	// identifies the sender of the message
@@ -224,7 +203,6 @@ void * dispatcher(char* dataIn){
 	char *thirdWord = parseWord(dataIn, 3);
 	int clientSocket;
        	//Gets the client's socketID
-	printf("dispatcher : le nom du sender:%s\n",sender);
 	int indexClient = indexClientPseudo(sender);
 	if(indexClient != -1){
 		pthread_mutex_lock(&mutex);
@@ -232,7 +210,6 @@ void * dispatcher(char* dataIn){
 		clientSocket = ClientList[indexClient].sockID;
 
 		pthread_mutex_unlock(&mutex);
-		//printf("ici\n");
 
 		if ((strncmp(thirdWord, "/exit", 5)) == 0) {
 			data = malloc(sizeof(char)*sizeof("\033[0;37m"));
@@ -258,7 +235,6 @@ void * dispatcher(char* dataIn){
 					}
 				}
 				pthread_mutex_unlock(&mutex);
-				//printf("si c toi batard \n");
 			}
 			free(data);
 		}
@@ -267,16 +243,13 @@ void * dispatcher(char* dataIn){
 		else if ((strncmp(thirdWord, "/list", 5)) == 0) {
 			data = malloc(sizeof(char)*sizeof("\033[0;37m"));
 			strcpy(data, "\033[0;37m");
-			//printf("fdp\n");
 			pthread_mutex_lock(&mutex);
-			//printf("salope\n");
 			for (int i = 0; i < clientCount; i++) {
 				data = realloc(data, sizeof(char) * (sizeof(ClientList[i].pseudo)+sizeof("\n")));
      				strcat(data, ClientList[i].pseudo);
 				strcat(data, "\n");
 			}
 			pthread_mutex_unlock(&mutex);
-			//printf("nique ta mere\n");
 			err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
 			if (err == -1){
 				fprintf(stderr, "dispatcher : /list failed\n");
@@ -304,18 +277,13 @@ void * dispatcher(char* dataIn){
 		// Sends message to all connected clients
 		else {
 			if(sizeof(dataIn) < 1000){
-			//	strcpy(dataIn, "\033[0;37m");
 			}
-			//printf("hello world\n");
 			pthread_mutex_unlock(&mutex);
-			//printf("hahahahahahaahahahahahah\n");
 			broadcastClient(dataIn);
 			pthread_mutex_lock(&mutex);
-			//printf("creve connard\n");
 		}
 		
 		pthread_mutex_unlock(&mutex);
-		//("je hais la vie\n");
 	}else printf("dispatcher : erreur lors de la recherche d'index avec indexClientPseudo\n");
 	return NULL;
 }
@@ -326,16 +294,14 @@ void * recupereData(void *arg){
     int *sockId = data->sockId, receved;
     int *fd = data->fd;
 	int sockID = *sockId;
-	char pseudo[254], dataIn[1024], dataOut[1024];
+	char dataIn[1024], dataOut[1024];
 	
 
 	while(isClientConnected(sockID)){
 		bzero(dataIn, 1024);
 		bzero(dataOut, 1024);
-		printf("boucle 1 sockID :%d\n",sockID);	
 		// Always & forever listen
 		receved = recv(sockID, dataIn, 1024, 0);
-		printf("receved passé !\n");
 		int index = indexClientSock(sockID);
 	
 		dataIn[receved] = '\0';
@@ -344,16 +310,13 @@ void * recupereData(void *arg){
 		strcat(dataOut, ClientList[index].pseudo);
 		strcat(dataOut, " : ");
 		strcat(dataOut, dataIn);
-		//printf("boucle 1 : %s\n",dataOut);
 		// Sends data through the pipe
-		printf("%s", dataOut);
+		//printf("%s", dataOut);
 		pthread_mutex_lock(&mutex);
-		printf("rentre dans le verrou boucle recupere\n");
 		write(fd[1], dataOut, sizeof(dataOut));
 		pthread_mutex_unlock(&mutex);
-		sleep(3);
+		//sleep(3);
 	}
-	printf("clientListener : boucle 1 ferme\n");
 	
 	pthread_exit(NULL);
 
@@ -362,24 +325,19 @@ void * recupereData(void *arg){
 // The clientListener function is used to listen for messages sent by a specific client and properly handle client disconnection.
 // Function handeling connexions
 void * clientListener(void * ClientDetail){
-	//printf("Début du clientListener !\n");
 	// Variables
-	//sleep(1);
 	struct client* clientDetail = (struct client*) ClientDetail;
 	
 	int clientSocket = clientDetail -> sockID;
 	int fd[2];
 
 	int index = indexClientSock(clientSocket);
-	//printf("On a passé indexClientSock\n");
 
 	if(index==-1){
 		printf("clientListener : la fonction indexClientSock n'a pas fonctionné\n");
 		//exit(0);
 	}
-	//printf("avant le verrou\n");
 	pthread_mutex_lock(&mutex);
-	//printf("après le verrou\n");
 	ClientList[index].pseudo = "default pseudo";
 	clientDetail -> grpID = "all";
 	char pseudo[254], dataIn[1024], dataOut[1024];
@@ -393,13 +351,16 @@ void * clientListener(void * ClientDetail){
 	pthread_mutex_unlock(&mutex);
 	
 	if (pipe(fd) == -1) {
-		printf("Erreur lors de la création du tube");
+		printf("Error during tube creation");
 		//exit(EXIT_FAILURE); 
 	}
 
 
 	// Waits for the pseudonym of the client
 	int receved = recv(clientSocket, pseudo, 254, 0);
+	if(receved==-1){
+		printf("Error during the reception");
+	}
 	//send /help when client is connected to see all commands
 
 	pthread_mutex_lock(&mutex);
@@ -415,36 +376,22 @@ void * clientListener(void * ClientDetail){
 	data.sockId = &arg;
 	data.fd = fd;	
 	
-	if (pthread_create(&thread, NULL, recupereData, (void *)&data) != 0) {
+	if (pthread_create(&recevoirData, NULL, recupereData, (void *)&data) != 0) {
        			 printf("Erreur lors de la création du thread");
    		}
-	//else { 
-		printf("POURQUOIIIIIII\n");
 		int r;
 		// Parent process | its goal is to parse the data given by the listener
 		while(isClientConnected(clientDetail->sockID)){
-			printf("printf début de la boucle 2\n");
-			//if (pthread_create(&thread, NULL, recupereData, (void *)&arg) != 0) {
-       		//	 printf("Erreur lors de la création du thread");
-   			//}
+			
 			bzero(dataIn, 1024);
 			bzero(dataOut, 1024);
-			printf("boucle 2 sockID :%d\n",clientDetail->sockID);	
-			//int read = recv(clientSocket, dataIn, 1024, 0);
-			printf("read pas passé encore bientôt\n");
-			//pthread_mutex_lock(&mutex);
-			//printf("rentre dans le verrou\n");
 			r = read(fd[0], dataIn, sizeof(dataIn));
-			//pthread_mutex_unlock(&mutex);
 
-			printf("read passé ! \n");
 			// Allows client to exit
 			if (r == -1) {
 				msleep(1000);
 				close(clientSocket);
-				printf("clientListener boucle2 : on entre dans remove client!!\n");
 				removeClient(clientDetail->sockID);
-				printf("clientListener boucle2 : on sort de remove client!!\n");
 				clientDetail -> sockID = 0;
 				break;
 			}
@@ -453,25 +400,18 @@ void * clientListener(void * ClientDetail){
 			else{
 				dispatcher(dataIn);
 			}
-			printf("je suis boucle 2 et je vais boucler \n");
-		//}
-		printf("clientListener : boucle 2 ferme\n");
 	}
 	pthread_exit(NULL); //-> mettre pthread exit ne vire pas l'utilisateur quand il quitte (wtf)
-	printf("clientListener : ferme\n");
 	return NULL;
 }
 
 
-// The main function initializes and configures the instant messaging server,
+// The main function initializes and configures the instant messaging server
 //listens for incoming client connections, 
 // creates threads to handle each client connection, and manages message distribution between clients via the dispatcher thread
 int main()
 {
 	struct sockaddr_in servaddr;
-	pthread_t thread_dispatcher;
-	int activity;
-	fd_set readfds;
 
 	// Socket create & verification
 	int serverSocket = socket(PF_INET, SOCK_STREAM, 0);
@@ -496,8 +436,6 @@ int main()
 		return EXIT_FAILURE;
 	}
 	else printf("Server listening...\n");
-
-	//pthread_create(&thread_dispatcher, NULL, DispatcherBis, NULL);
 
 	// Threads each new connection to the server, and links a struct to each client
 	unsigned int newClient;
@@ -551,9 +489,7 @@ int main()
     			
 		}
 
-		printf("main : fin boucle interne\n");
 		pthread_exit(NULL);
 		close(serverSocket);
 	}
-	printf("wouhou le serveur est ferme!!");
 }
