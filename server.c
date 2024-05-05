@@ -247,6 +247,7 @@ void *dispatcher(char *dataIn)
 		if ((strncmp(thirdWord, "/exit", 5)) == 0)
 		{
 			data = malloc(sizeof(char) * sizeof("\033[0;37m"));
+			if(data != NULL){
 			strcpy(data, "\033[0;37m");
 			err = send(clientSocket, "/exit", sizeof("/exit"), 0);
 			if (err == -1)
@@ -256,6 +257,7 @@ void *dispatcher(char *dataIn)
 			else
 			{
 				data = realloc(data, sizeof(char) * (sizeof(sender) + sizeof(" disconnected..\n")));
+				if(data != NULL){
 				strcat(data, sender);
 				strcat(data, " disconnected...\n");
 				broadcastClient(data);
@@ -273,56 +275,72 @@ void *dispatcher(char *dataIn)
 					}
 				}
 				pthread_mutex_unlock(&mutex);
+				}
 			}
 			free(data);
+			}
+			if (err == -1 || data == NULL)
+			{
+				fprintf(stderr, "dispatcher : /help failed\n");
+			}
 		}
 		// Allows to list all online clients, and sends it to the client
 
 		else if ((strncmp(thirdWord, "/list", 5)) == 0)
 		{
 			data = malloc(sizeof(char) * sizeof("\033[0;37m"));
+			if(data != NULL){
 			strcpy(data, "\033[0;37m");
 			pthread_mutex_lock(&mutex);
 			for (int i = 0; i < clientCount; i++)
 			{
 				data = realloc(data, sizeof(char) * (sizeof(ClientList[i].pseudo) + sizeof("\n")));
+				if(data != NULL){
 				strcat(data, ClientList[i].pseudo);
 				strcat(data, "\n");
+				}else{break;}
 			}
 			pthread_mutex_unlock(&mutex);
+			if(data != NULL){
 			err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
 			if (err == -1)
 			{
 				fprintf(stderr, "dispatcher : /list failed\n");
 			}
 			free(data);
+			}
+			}
+			if (err == -1 || data == NULL)
+			{
+				fprintf(stderr, "dispatcher : /help failed\n");
+			}
 		}
 
 		// Gives helpful commands
 		else if ((strncmp(thirdWord, "/help", 5)) == 0)
 		{
 			data = malloc(sizeof(char) * sizeof("\033[0;37m"));
-			strcpy(data, "\033[0;37m");
-			data = realloc(data, sizeof(char) * (sizeof("Possible commands :\n/help to see all possible commands\n\t/list to list all connected clients\n") + sizeof("\t/exit to exit your session\n") + sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
+			if(data != NULL){
 
-			strcat(data, "Possible commands :\n\t/help to see all possible commands\n");
-			strcat(data, "\t/list to list all connected clients\n");
-			strcat(data, "\t/exit to exit your session\n");
-			strcat(data, "\tctrl+c to stop message flow. To see messages again, send a message.\n");
-			err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
-			if (err == -1)
+				strcpy(data, "\033[0;37m");
+				data = realloc(data, sizeof(char) * (sizeof("Possible commands :\n/help to see all possible commands\n\t/list to list all connected clients\n") + sizeof("\t/exit to exit your session\n") + sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
+
+				strcat(data, "Possible commands :\n\t/help to see all possible commands\n");
+				strcat(data, "\t/list to list all connected clients\n");
+				strcat(data, "\t/exit to exit your session\n");
+				strcat(data, "\tctrl+c to stop message flow. To see messages again, send a message.\n");
+				err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
+				free(data);
+			}
+			if (err == -1 || data == NULL)
 			{
 				fprintf(stderr, "dispatcher : /help failed\n");
 			}
-			free(data);
 		}
 
 		// Sends message to all connected clients
 		else
 		{
-			if (sizeof(dataIn) < 1000)
-			{
-			}
 			pthread_mutex_unlock(&mutex);
 			broadcastClient(dataIn);
 			pthread_mutex_lock(&mutex);
