@@ -30,7 +30,7 @@ make
 
 ### nettoyer le repo
 - pour effacer les fichiers d'execution et objets, faire la commande :
-  ```bash
+```bash
 make clean
 ```
 
