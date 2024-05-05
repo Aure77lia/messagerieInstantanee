@@ -5,17 +5,16 @@ CFLAGS = -Wall -Wextra
 LDFLAGS =
 LDLIBS =
 
-SRC = server.c client.c serverAlt.c
+SRC = server.c client.c
 OBJ = ${SRC:.c=.o}
 
-all: server client serverAlt
+all: server client
 
 server: server.o
 client: client.o
-serverAlt: serverAlt.o
 
 clean:
 	${RM} ${OBJ}
-	${RM} server client serverAlt
+	${RM} server client
 
 # END
