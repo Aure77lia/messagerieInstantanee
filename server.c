@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <stdbool.h>
 
 #define MAX 160
 #define PORT 8080
@@ -33,97 +34,108 @@ struct client {
 };
 
 struct client ClientList[1024];
-pthread_t thread[1024]; 
+pthread_t thread[1024];
 
 int indexClientSock(int sockID){
-    pthread_mutex_lock(&mutex);
+    printf("indexClientSock : avant le verrou\n");
+	pthread_mutex_lock(&mutex);
+	printf("indexClientSock : dans le verrou\n");
     int index = -1;
-    for(int i = 0; i < clientCount; i++){
-        if (ClientList[i].sockID == sockID){
-            index = i ;
-            break;
-        }
-    }
+	if(clientCount==0){
+		perror("IndexClientSock : pas de client connecté");
+	} else {
+		for(int i = 0; i < clientCount; i++){
+			if (ClientList[i].sockID == sockID){
+				index = i ;
+				break;
+			}
+		}
+	}
+	if(index==-1){
+		perror("client non trouvé");
+		return -1;
+	}
     pthread_mutex_unlock(&mutex);
+	printf("indexClientSock : sorti du verrou\n");
     return index;
 }
 
 int indexClientPseudo(char *pseudo){
-    pthread_mutex_lock(&mutex);
+    printf("indexCLientPseudo : avant le verrou\n");
+	pthread_mutex_lock(&mutex);
+	printf("indexCLientPseudo : dans le verrou\n");
+
     int index = -1;
-    for(int i = 0; i < clientCount; i++){
-		if (strcmp(ClientList[i].pseudo, pseudo) == 0){
-            index = i ;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&mutex);
-    return index;
+    if(clientCount==0){
+		perror("indexClientPseudo : pas de client connecté");
+	} else {
+		for(int i = 0; i < clientCount; i++){
+			if (strcmp(ClientList[i].pseudo, pseudo) == 0){
+				index = i ;
+				break;
+			
+			}
+		}
+	}
+	pthread_mutex_unlock(&mutex);
+	printf("indexCLientPseudo : après le verrou\n");
+
+	return index;
 }
 
-int removeClient(int index) {
-    int size = 1024;
-	if (index < 0 || index >= size) {
-        printf("Index hors limites\n");
+int removeClient(int index){
+	printf("remove client : avant lock\n");;
+	pthread_mutex_lock(&mutex);
+	printf("remove client : on est entre dans le verrou !\n");
+	if(clientCount==0){
+		printf("removeClient : pas de client à remove !\n");
+		return -1;
+	}
+	if (index < 0 || index >= clientCount) {
+        printf("removeClient : Index hors limites\n");
         return -1;
     }
-
-    for (int i = index; i < size - 1; i++) {
+    for (int i = index; i < clientCount - 1; i++) {
         ClientList[i] = ClientList[i + 1];
+		printf("hehe\n");
     }
+	clientCount--;
+	pthread_mutex_unlock(&mutex);
+	printf("remove client : on est sorti du verrou !\n");
+
 	return 0 ;
 }
 
 void *timerThread(void *arg) {
     sleep(TIMEOUT_SECONDS);
+
     pthread_mutex_lock(&mutex);
+
     if (clientCount == 0) {
         printf("Aucun client connecté. Arrêt du serveur...\n");
 		close(serverSocket);
         exit(0);
     }
     pthread_mutex_unlock(&mutex);
+
     return NULL;
 }
 
-// The push function is used to store incoming messages in a stack.
-// when used it is always protected by a mutex to avoid concurrency issues when multiple threads try to modify the stack at the same time.
-/*int push(char stack[MAX][1024], int *top, char data[1024])
-{
-      if(*top == MAX -1)
-            return(-1);
-      else {
-            *top = *top + 1;
-            strcpy(stack[*top], data);
-            return(1);
-      }
-} 
-int push(char stack[MAX][1024], int *top, char data[1024]) {
-    pthread_mutex_lock(&mutex);
-    if (*top >= MAX - 1) {
-        pthread_mutex_unlock(&mutex);
-        fprintf(stderr, "Stack overflow prevented at push\n");
-        return -1;
-    } else {
-        *top = *top + 1;
-        strncpy(stack[*top], data, 1023);  // Safeguard against buffer overflow
-        stack[*top][1023] = '\0';  // Ensure null termination
-        pthread_mutex_unlock(&mutex);
-        return 1;
+bool isClientConnected(int sockID){
+	//pthread_mutex_lock(&mutex);
+    bool isConnected = false;
+	if(clientCount!=0){
+    for(int i = 0; i < clientCount; i++){
+        if (ClientList[i].sockID == sockID){
+            isConnected = true ;
+            break;
+        }
     }
-} */
-
-// The pop function is used to extract messages so that they can be processed and distributed to clients by the Dispatcher function.
-int pop(char stack[MAX][1024], int *top, char data[1024])
-{
-      if(*top == -1)
-            return(-1);
-      else {
-            strcpy(data, stack[*top]);
-            *top = *top - 1;
-            return(1);
-      }
+	}
+    //pthread_mutex_unlock(&mutex);
+    return isConnected;
 }
+
 
 // sleep() only works in seconds, msleep works in miliseconds
 int msleep(unsigned int tms) {
@@ -161,18 +173,21 @@ char * parseWord( const char str[], size_t pos ){
 // *dataOut is the message to broadcast to all connected clients.
 
 void broadcastClient(char *dataOut) {
+	pthread_mutex_lock(&mutex);
     	for (int i = 0; i < clientCount; i++) {
         	if (send(ClientList[i].sockID, dataOut, 1024, 0) == -1){
 	       		fprintf(stderr, "broadcastClient : error sending messages \n");
 		}
     	}
+	pthread_mutex_unlock(&mutex);
     
-    printf("%s", dataOut);
+    	printf("%s", dataOut);
 }
 
 
 // The Dispatcher function ensures the reception, analysis and distribution of messages between clients
 void * dispatcher(char* dataIn){
+	printf("Dispatcher : se lance\n");
 	char* data;
 	int err;
 	// identifies the sender of the message
@@ -181,8 +196,15 @@ void * dispatcher(char* dataIn){
 	int clientSocket;
        	//Gets the client's socketID
 	int indexClient = indexClientPseudo(sender);
+	if(indexClient==-1){
+		printf("DispatcherBis : erreur lors de la recherche d'index avec indexClientPseudo\n");
+		//exit(0);
+	}
+	//printf("Dispatcher : avant le verrou\n");
 
 	pthread_mutex_lock(&mutex);
+	//printf("Dispatcher : après le verrou\n");
+
 	clientSocket = ClientList[indexClient].sockID;
 	if ((strncmp(thirdWord, "/exit", 5)) == 0) {
 		data = malloc(sizeof(char)*sizeof("\033[1;91m"));
@@ -195,10 +217,15 @@ void * dispatcher(char* dataIn){
 			data = realloc(data, sizeof(char) * (sizeof(sender)+sizeof(" disconnected..\n")));
 			strcat(data, sender);
 			strcat(data, " disconnected...\n");
+			pthread_mutex_unlock(&mutex);
 			broadcastClient(data);
+			pthread_mutex_lock(&mutex);
+
 			close(clientSocket);
-			clientCount--;
+			pthread_mutex_unlock(&mutex);
 			removeClient(indexClient);
+			pthread_mutex_lock(&mutex);
+
 			if (clientCount == 0){
 				if (pthread_create(&timer, NULL, timerThread, NULL) != 0){
 					perror("dispatcher : error creation thread");
@@ -242,8 +269,13 @@ void * dispatcher(char* dataIn){
 			
 	// Sends message to all connected clients
 	else {
-
+		if(sizeof(dataIn) < 1000){
+		//	strcpy(dataIn, "\033[0;37m");
+		}
+		pthread_mutex_unlock(&mutex);
+		
 		broadcastClient(dataIn);
+		pthread_mutex_lock(&mutex);
 	}
 	
 	pthread_mutex_unlock(&mutex);
@@ -257,9 +289,12 @@ void * dispatcher(char* dataIn){
 void * clientListener(void * ClientDetail){
 	// Variables
 	struct client* clientDetail = (struct client*) ClientDetail;
-	//int index = clientDetail -> index;
 	int clientSocket = clientDetail -> sockID;
 	int index = indexClientSock(clientSocket);
+	if(index==-1){
+		printf("clientListener : la fonction indexClientSock n'a pas fonctionné\n");
+		//exit(0);
+	}
 	ClientList[index].pseudo = "default pseudo";
 	clientDetail -> grpID = "all";
 	char pseudo[254], dataIn[1024], dataOut[1024];
@@ -283,12 +318,7 @@ void * clientListener(void * ClientDetail){
 	strcat(dataOut, " is connected !\n");
 	
 	broadcastClient(dataOut);
-	
-	//pthread_mutex_lock(&mutex);
-	//push(stack, &top, dataOut);
-	//pthread_mutex_unlock(&mutex);
 
-	
 
 	pid_t pid = fork();
 	if(pid == -1){
@@ -298,12 +328,14 @@ void * clientListener(void * ClientDetail){
 	else if(pid == 0){
 		// Child process | its goal is to listen & receive data and send it to the parser
 
-		while(1){
+		while(isClientConnected(clientDetail->sockID)){
+			sleep(1); // pour ne pas bloquer en boucle
 			bzero(dataIn, 1024);
 			bzero(dataOut, 1024);
 			
-			// Always & forever lisen
+			// Always & forever listen
 			receved = recv(clientSocket, dataIn, 1024, 0);
+		
 			dataIn[receved] = '\0';
 			strcpy(dataOut, ClientList[index].color);
 			strcat(dataOut, "\t");
@@ -327,6 +359,7 @@ void * clientListener(void * ClientDetail){
 			if (r == -1) {
 				msleep(1000);
 				close(clientSocket);
+				removeClient(clientDetail->sockID);
 				clientDetail -> sockID = 0;
 				break;
 			}
@@ -334,10 +367,6 @@ void * clientListener(void * ClientDetail){
 			// Send message to all clients
 			else{
 				dispatcher(dataIn);
-				//broadcastClient(dataIn);
-				//pthread_mutex_lock(&mutex);
-				//push(stack, &top, dataIn);
-				//pthread_mutex_unlock(&mutex);
 			}
 
 		}
@@ -383,9 +412,8 @@ int main()
 	// Threads each new connection to the server, and links a struct to each client
 	unsigned int newClient;
 	while(1){
-		pthread_mutex_init(&mutex, NULL);
 		
-		pthread_mutex_lock(&mutex);
+		//pthread_mutex_lock(&mutex);
 		if (clientCount==0){
 			if (pthread_create(&timer, NULL, timerThread, NULL) != 0) {
                 		perror("Erreur lors de la création du thread du temporisateur");
@@ -393,7 +421,7 @@ int main()
                 		return 1;
         	    	}
 		}
-		pthread_mutex_unlock(&mutex);
+		//pthread_mutex_unlock(&mutex);
 
 		newClient = ClientList[clientCount].len;
 
@@ -413,7 +441,6 @@ int main()
 		}
 		
 		clientCount ++;
-		pthread_mutex_destroy(&mutex);
 		
 	}
 	pthread_exit(NULL);
