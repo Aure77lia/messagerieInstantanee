@@ -1,4 +1,6 @@
 # messagerieInstantanee
+## Auteurs :
+Pauline Fourel, Baptiste Matrat, Aurelia Gomes
 ### lancer le serveur seuement 
 Pour lancer le serveur : 
 - dans une console, compiler le server avec la commande :
