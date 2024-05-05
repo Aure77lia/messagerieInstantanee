@@ -17,13 +17,15 @@
 #define SA struct sockaddr
 #define TIMEOUT_SECONDS 20
 
-int clientCount = 0, top = -1;
-char stack[MAX][1024];
+int clientCount = 0, top = -1, sockCount =0;
+//char stack[MAX][1024];
 //static pthread_mutex_t mutex; 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+bool isServRunning = true ;
 static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 static pthread_t timer;
 int serverSocket;
+int sockList[1024];
 
 
 struct client {
@@ -62,6 +64,18 @@ int indexClientSock(int sockID){
     pthread_mutex_unlock(&mutex);
 	//printf("indexClientSock : sorti du verrou\n");
     return index;
+}
+
+void closeServer(){
+	isServRunning=false;
+	pthread_mutex_destroy(&mutex);
+	// Fermeture de toutes les connexions existantes et passées
+	for (int i = 0; i < sockCount; i++) {
+   		 close(sockList[i]);
+	}
+
+	close(serverSocket);
+	
 }
 
 int indexClientPseudo(char *pseudo){
@@ -119,8 +133,8 @@ void *timerThread(void *arg) {
 
     if (clientCount == 0) {
         printf("Aucun client connecté. Arrêt du serveur...\n");
-		close(serverSocket);
-        exit(0);
+		closeServer();
+		exit(0);
     }
     pthread_mutex_unlock(&mutex);
 
@@ -459,12 +473,9 @@ int main()
 	// Threads each new connection to the server, and links a struct to each client
 	unsigned int newClient;
 	while(1){
-		//printf("avant le verrou de la putain de main de merde\n");
 		pthread_mutex_lock(&mutex);
-		//printf("dans le verrou de la putain de main de merde\n");
 		if (clientCount==0){
 			pthread_mutex_unlock(&mutex);
-			//printf("ici ??\n");
 			if (pthread_create(&timer, NULL, timerThread, NULL) != 0) {
                 		perror("Erreur lors de la création du thread du temporisateur");
 						close(serverSocket);
@@ -472,19 +483,15 @@ int main()
                 		return 1;
         	    	}
 			pthread_mutex_lock(&mutex);
-			//printf("la ??\n");
-
 		}
-		
-		//printf("on atteint ici ???\n");
 
 		newClient = ClientList[clientCount].len;
-		//printf("on atteint ici 2 ???\n");
 		pthread_mutex_unlock(&mutex);
 
 		/*
 		while (1) {
-        // Effacer l'ensemble des descripteurs de fichiers à surveiller
+        
+		// Effacer l'ensemble des descripteurs de fichiers à surveiller
         FD_ZERO(&readfds);
 
         // Ajouter le socket du serveur à l'ensemble
@@ -493,12 +500,12 @@ int main()
 		int maxfd = serverSocket;
 
 		for (int i = 0; i < clientCount; i++) {
-        FD_SET(ClientList[i].sockID, &readfds);
-        if (ClientList[i].sockID > maxfd) {
-            maxfd = ClientList[i].sockID;
-        }
-    }
-        // Attendre une activité sur un des descripteurs de fichiers
+        	FD_SET(ClientList[i].sockID, &readfds);
+        	if (ClientList[i].sockID > maxfd) {
+         	   maxfd = ClientList[i].sockID;
+        	}
+    	}
+    // Attendre une activité sur un des descripteurs de fichiers
     activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
     if ((activity < 0) && (errno != EINTR)) {
         perror("Erreur lors de la sélection");
@@ -509,29 +516,22 @@ int main()
         if (FD_ISSET(serverSocket, &readfds)) {
             struct sockaddr_in clientAddr;
             int clientAddrLen = sizeof(clientAddr);
-    */
             // Accepter la nouvelle connexion
-           /* if (ClientList[clientCount].sockID == -1){
+        if (ClientList[clientCount].sockID == -1){
 			fprintf(stderr, "cannot connect\n");
 			exit(0);
 		}
         }
-    */
 		
-		//printf("on atteint ici 3 ???\n");
 
 		ClientList[clientCount].sockID = accept(serverSocket, (struct sockaddr*) &ClientList[clientCount].clientAddr, &newClient);
-	if (ClientList[clientCount].sockID == -1){
+		if (ClientList[clientCount].sockID == -1){
 			fprintf(stderr, "cannot connect\n");
 			exit(0);
 		}
         
-		//printf("on atteint ici 4 ???\n");
 
 		int thr;
-		//ClientList[clientCount].index = clientCount + 1;
-		
-		//printf("Après le verrou de la main de merde\n");
 		thr = pthread_create(&thread[clientCount], NULL, clientListener, (void *) &ClientList[clientCount]);
 		
 		if (thr != 0)
@@ -540,11 +540,70 @@ int main()
 			exit(0);
 		}
 		pthread_mutex_lock(&mutex);
-		//printf("verrou pour compter client dedans\n");
 		clientCount ++;
 		pthread_mutex_unlock(&mutex);
-	}
+	}*/
+	while (isServRunning) {
+    // Effacer l'ensemble des descripteurs de fichiers à surveiller
+    FD_ZERO(&readfds);
+
+    // Ajouter le socket du serveur à l'ensemble
+    FD_SET(serverSocket, &readfds);
+    int maxfd = serverSocket;
+
+	pthread_mutex_lock(&mutex);
+    for (int i = 0; i < clientCount; i++) {
+        FD_SET(ClientList[i].sockID, &readfds);
+        if (ClientList[i].sockID > maxfd) {
+            maxfd = ClientList[i].sockID;
+        }
+    }
+
+	pthread_mutex_unlock(&mutex);
+
+    // Attendre une activité sur un des descripteurs de fichiers
+    activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
+    if ((activity < 0) && (errno != EINTR)) {
+        perror("Erreur lors de la sélection");
+        exit(EXIT_FAILURE);
+    }
+
+    // Si une activité est détectée sur le socket du serveur, cela signifie une nouvelle connexion entrante
+    if (FD_ISSET(serverSocket, &readfds)) {
+        struct sockaddr_in clientAddr;
+        int clientAddrLen = sizeof(clientAddr);
+        
+        // Accepter la nouvelle connexion
+        int newClientSocket = accept(serverSocket, (struct sockaddr*) &clientAddr, &clientAddrLen);
+        if (newClientSocket == -1) {
+            perror("Erreur lors de l'acceptation de la connexion");
+            continue; // Passer à la prochaine itération de la boucle
+        }
+
+        // Ajouter le nouveau client à la liste des clients
+        pthread_mutex_lock(&mutex);
+        ClientList[clientCount].sockID = newClientSocket;
+		sockList[sockCount]=newClientSocket;
+		sockCount++;
+        clientCount++;
+        pthread_mutex_unlock(&mutex);
+        
+        // Ajouter le nouveau client à l'ensemble des descripteurs de fichiers à surveiller
+        FD_SET(newClientSocket, &readfds);
+        if (newClientSocket > maxfd) {
+            maxfd = newClientSocket;
+        }
+
+        // Créer un thread pour gérer la connexion du nouveau client
+        int thr = pthread_create(&thread[clientCount - 1], NULL, clientListener, (void *)&ClientList[clientCount - 1]);
+        if (thr != 0) {
+            fprintf(stderr, "Erreur lors de la création du thread client\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
 	pthread_exit(NULL);
-	// After chatting close the socket
 	close(serverSocket);
+}
 }
