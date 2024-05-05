@@ -28,7 +28,6 @@ int msleep(unsigned int tms) {
 }
 
 void intHandler(){
-	printf("Server : message flow stopped, to see the messages again, send a message\n");
 	stopRunning = 1;
 }
 
@@ -49,24 +48,27 @@ void recvMessage(int sock)
 			fprintf(stderr, "recvMessage : message could not be read\n");
 			exit(0);
 		}
+		
+		if (strlen(buff) != 0){
 
-		//if messages paused, store received messages in a buffer
-		if(stopRunning){
-			strcat(messageBuffer,buff);
-			char* trimmedBuff = buff+7;
-			if (strncmp(trimmedBuff,pseudo,strlen(pseudo)) == 0){
-				printf("%s",messageBuffer);
-				messageBuffer[0] = '\0';
-				stopRunning = 0;
+			//if messages paused, store received messages in a buffer
+			if(stopRunning){
+				strcat(messageBuffer,buff);
+				char* trimmedBuff = buff+sizeof("\033[0;31m\t")-1;
+				if (strncmp(trimmedBuff,pseudo,strlen(pseudo)) == 0){
+					printf("%s",messageBuffer);
+					messageBuffer[0] = '\0';
+					stopRunning = 0;
+				}
+			}else if ((strncmp(buff, "/exit", 5)) == 0) {
+				printf("\033[0;37m\nClient Exit...\n");
+				break;
+			}else
+			{
+				//if not paused, print the message immediately
+				printf("%s",buff);
 			}
-		}else{
-			//if not paused, print the message immediately
-			printf("%s",buff);
-		}
 
-		if ((strncmp(buff, "/exit", 5)) == 0) {
-			printf("\nClient Exit...\n");
-			break;
 		}
 	}
 }
@@ -78,7 +80,7 @@ void recvMessage(int sock)
 void sendMessage(int sock)
 {
 	char buff[MAX];
-	//int n;
+//	int n;
 	ssize_t s;
 	while(1) { 
 		// like 'xor buff, buff'
@@ -88,15 +90,15 @@ void sendMessage(int sock)
 		//Message to send
 		printf("\33[2K\r");
         	//while ((buff[n++] = getchar()) != '\n');
-		//if(strlen(buff) != 1 && strlen(buff) <= 1020){
+		if(strlen(buff) != 1 && strlen(buff) <= 1020){
 			s = send(sock, buff, sizeof(buff), 0);
 			if(s == -1){
 				fprintf(stderr,"sendMessage : message could not be sent\n");
 				exit(0);
 			}
-		//}
-		//else 
-		//	printf("Invalid message size...\n");
+		}
+		else 
+			printf("Invalid message size...\n");
 		
         	if ((strncmp(buff, "/exit", sizeof("/exit"))) == 0) {
 			break;
@@ -130,7 +132,10 @@ int main()
 		perror("connection with server error");
 		exit(0);
 	}
-	else printf("connected to the server, to see all commands, enter /help\n");
+	else {
+		printf("connected to the server\nPossible commands :\n\t/help to see all possible commands\n\t/list to list all connected clients\n\t/exit to exit your session\n\tctrl+c to stop message flow. To see messages again, send a message.\n");
+	}
+
 
 	int n = 0;
 	printf("Please enter your pseudo : ");
@@ -142,6 +147,7 @@ int main()
 	strcat(pseudo,id);
 	write(sock, pseudo, sizeof(pseudo));	
 		
+	signal(SIGINT,intHandler);
 	pid_t pid = fork();
 	if (pid == -1){
 		perror("fork error");
@@ -150,7 +156,6 @@ int main()
 		sendMessage(sock);
 	} else 
 	{
-		signal(SIGINT,intHandler);
 		recvMessage(sock);
 	}
 	// close the socket

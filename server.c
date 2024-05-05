@@ -197,7 +197,7 @@ void * dispatcher(char* dataIn){
        	//Gets the client's socketID
 	int indexClient = indexClientPseudo(sender);
 	if(indexClient==-1){
-		printf("DispatcherBis : erreur lors de la recherche d'index avec indexClientPseudo\n");
+		printf("dispatcher : erreur lors de la recherche d'index avec indexClientPseudo\n");
 		//exit(0);
 	}
 	//printf("Dispatcher : avant le verrou\n");
@@ -207,8 +207,8 @@ void * dispatcher(char* dataIn){
 
 	clientSocket = ClientList[indexClient].sockID;
 	if ((strncmp(thirdWord, "/exit", 5)) == 0) {
-		data = malloc(sizeof(char)*sizeof("\033[1;91m"));
-		strcpy(data, "\033[1;91m");
+		data = malloc(sizeof(char)*sizeof("\033[0;37m"));
+		strcpy(data, "\033[0;37m");
 		err = send(clientSocket, "/exit", sizeof("/exit"), 0);
 		if (err == -1){
 			fprintf(stderr, "dispatcher : exit failed\n");
@@ -237,8 +237,8 @@ void * dispatcher(char* dataIn){
 	// Allows to list all online clients, and sends it to the client
 		
 	else if ((strncmp(thirdWord, "/list", 5)) == 0) {
-		data = malloc(sizeof(char)*sizeof("\033[1;95m"));
-		strcpy(data, "\033[1;95m");
+		data = malloc(sizeof(char)*sizeof("\033[0;37m"));
+		strcpy(data, "\033[0;37m");
 		for (int i = 0; i < clientCount; i++) {
 			data = realloc(data, sizeof(char) * (sizeof(ClientList[i].pseudo)+sizeof("\n")));
      			strcat(data, ClientList[i].pseudo);
@@ -253,11 +253,12 @@ void * dispatcher(char* dataIn){
 
 	// Gives helpful commands
 	else if ((strncmp(thirdWord, "/help", 5)) == 0) {
-		data = malloc(sizeof(char)*sizeof("\033[1;92m"));
-		strcpy(data, "\033[1;92m");
-		data = realloc(data, sizeof(char) * (sizeof("Possible commands :\n\t/list to list all connected clients\n")+sizeof("\t/exit to exit your session\n")+sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
+		data = malloc(sizeof(char)*sizeof("\033[0;37m"));
+		strcpy(data, "\033[0;37m");
+		data = realloc(data, sizeof(char) * (sizeof("Possible commands :\n/help to see all possible commands\n\t/list to list all connected clients\n")+sizeof("\t/exit to exit your session\n")+sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
 
-		strcat(data, "Possible commands :\n\t/list to list all connected clients\n");
+		strcat(data, "Possible commands :\n\t/help to see all possible commands\n");
+		strcat(data, "\t/list to list all connected clients\n");
 		strcat(data, "\t/exit to exit your session\n");
 		strcat(data, "\tctrl+c to stop message flow. To see messages again, send a message.\n");
 		err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
@@ -269,11 +270,7 @@ void * dispatcher(char* dataIn){
 			
 	// Sends message to all connected clients
 	else {
-		if(sizeof(dataIn) < 1000){
-		//	strcpy(dataIn, "\033[0;37m");
-		}
 		pthread_mutex_unlock(&mutex);
-		
 		broadcastClient(dataIn);
 		pthread_mutex_lock(&mutex);
 	}
@@ -298,10 +295,10 @@ void * clientListener(void * ClientDetail){
 	ClientList[index].pseudo = "default pseudo";
 	clientDetail -> grpID = "all";
 	char pseudo[254], dataIn[1024], dataOut[1024];
-	int num = (index%7) + 31;
+	int num = (index%7) + 91;
 	char str[2];
 	sprintf(str,"%d",num);
-	strcat(ClientList[index].color,"\033[0;");
+	strcat(ClientList[index].color,"\033[1;");
 	strcat(ClientList[index].color,str);
 	strcat(ClientList[index].color,"m");
 
@@ -312,7 +309,8 @@ void * clientListener(void * ClientDetail){
 
 	// Waits for the pseudonym of the client
 	int receved = recv(clientSocket, pseudo, 254, 0);
-	
+	//send /help when client is connected to see all commands
+
 	ClientList[index].pseudo = pseudo;
 	strcpy(dataOut, ClientList[index].pseudo);
 	strcat(dataOut, " is connected !\n");
