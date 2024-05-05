@@ -210,6 +210,12 @@ void * Dispatcher(){
 				close(clientSocket);
 				clientCount--;
 				removeClient(indexClient);
+				if (clientCount==0){
+					if (pthread_create(&timer, NULL, timerThread, NULL) != 0) {
+                		perror("Erreur lors de la création du thread du temporisateur");
+                		
+            		}
+				}
 
 			}
 			// Allows to list all online clients, and sends it to the client
