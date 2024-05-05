@@ -1,9 +1,9 @@
 # Makefile
 
 CC = gcc
-CFLAGS = -Wall -Wextra
-LDFLAGS =
-LDLIBS =
+CFLAGS = -Wall -Wextra -std=gnu99
+LDFLAGS = -pthread
+LDLIBS = -lm -lpthread
 
 SRC = server.c client.c
 OBJ = ${SRC:.c=.o}

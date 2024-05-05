@@ -27,6 +27,10 @@ static pthread_t timer;
 int serverSocket;
 int sockList[1024];
 
+struct ThreadData {
+    int *sockId;
+    int *fd;
+};
 
 struct client {
 	//int index;
@@ -73,7 +77,6 @@ void closeServer(){
 	for (int i = 0; i < sockCount; i++) {
    		 close(sockList[i]);
 	}
-
 	close(serverSocket);
 	
 }
@@ -134,7 +137,6 @@ void *timerThread(void *arg) {
     if (clientCount == 0) {
         printf("Aucun client connecté. Arrêt du serveur...\n");
 		closeServer();
-		exit(0);
     }
     pthread_mutex_unlock(&mutex);
 
@@ -318,6 +320,44 @@ void * dispatcher(char* dataIn){
 	return NULL;
 }
 
+void * recupereData(void *arg){
+	
+	struct ThreadData *data = (struct ThreadData *)arg;
+    int *sockId = data->sockId, receved;
+    int *fd = data->fd;
+	int sockID = *sockId;
+	char pseudo[254], dataIn[1024], dataOut[1024];
+	
+
+	while(isClientConnected(sockID)){
+		bzero(dataIn, 1024);
+		bzero(dataOut, 1024);
+		printf("boucle 1 sockID :%d\n",sockID);	
+		// Always & forever listen
+		receved = recv(sockID, dataIn, 1024, 0);
+		printf("receved passé !\n");
+		int index = indexClientSock(sockID);
+	
+		dataIn[receved] = '\0';
+		strcpy(dataOut, ClientList[index].color);
+		strcat(dataOut, "\t");
+		strcat(dataOut, ClientList[index].pseudo);
+		strcat(dataOut, " : ");
+		strcat(dataOut, dataIn);
+		//printf("boucle 1 : %s\n",dataOut);
+		// Sends data through the pipe
+		printf("%s", dataOut);
+		pthread_mutex_lock(&mutex);
+		printf("rentre dans le verrou boucle recupere\n");
+		write(fd[1], dataOut, sizeof(dataOut));
+		pthread_mutex_unlock(&mutex);
+		sleep(3);
+	}
+	printf("clientListener : boucle 1 ferme\n");
+	
+	pthread_exit(NULL);
+
+}
 
 // The clientListener function is used to listen for messages sent by a specific client and properly handle client disconnection.
 // Function handeling connexions
@@ -328,7 +368,7 @@ void * clientListener(void * ClientDetail){
 	struct client* clientDetail = (struct client*) ClientDetail;
 	
 	int clientSocket = clientDetail -> sockID;
-		
+	int fd[2];
 
 	int index = indexClientSock(clientSocket);
 	//printf("On a passé indexClientSock\n");
@@ -351,10 +391,7 @@ void * clientListener(void * ClientDetail){
 	strcat(ClientList[index].color,"m");
 	
 	pthread_mutex_unlock(&mutex);
-
-
-	// pipe through fork
-	int fd[2];
+	
 	if (pipe(fd) == -1) {
 		printf("Erreur lors de la création du tube");
 		//exit(EXIT_FAILURE); 
@@ -372,44 +409,35 @@ void * clientListener(void * ClientDetail){
 	strcat(dataOut, " is connected !\n");
 	
 	broadcastClient(dataOut);
-
-
-	pid_t pid = fork();
-	if(pid == -1){
-		perror("forking");
-		return NULL;
-	}
-	else if(pid == 0){
-		// Child process | its goal is to listen & receive data and send it to the parser
-
-		while(isClientConnected(clientDetail->sockID)){
-			bzero(dataIn, 1024);
-			bzero(dataOut, 1024);
-			printf("boucle 1 sockID :%d\n",clientDetail->sockID);	
-			// Always & forever listen
-			receved = recv(clientSocket, dataIn, 1024, 0);
-		
-			dataIn[receved] = '\0';
-			strcpy(dataOut, ClientList[index].color);
-			strcat(dataOut, "\t");
-			strcat(dataOut, ClientList[index].pseudo);
-			strcat(dataOut, " : ");
-			strcat(dataOut, dataIn);
-			//printf("boucle 1 : %s\n",dataOut);
-			// Sends data through the pipe
-			write(fd[1], dataOut, sizeof(dataOut));
-		}
-		printf("clientListener : boucle 1 ferme\n");
-	} 
-	else { 
+	
+	int arg = clientDetail->sockID;
+	struct ThreadData data;
+	data.sockId = &arg;
+	data.fd = fd;	
+	
+	if (pthread_create(&thread, NULL, recupereData, (void *)&data) != 0) {
+       			 printf("Erreur lors de la création du thread");
+   		}
+	//else { 
+		printf("POURQUOIIIIIII\n");
 		int r;
 		// Parent process | its goal is to parse the data given by the listener
 		while(isClientConnected(clientDetail->sockID)){
+			printf("printf début de la boucle 2\n");
+			//if (pthread_create(&thread, NULL, recupereData, (void *)&arg) != 0) {
+       		//	 printf("Erreur lors de la création du thread");
+   			//}
 			bzero(dataIn, 1024);
 			bzero(dataOut, 1024);
 			printf("boucle 2 sockID :%d\n",clientDetail->sockID);	
 			//int read = recv(clientSocket, dataIn, 1024, 0);
+			printf("read pas passé encore bientôt\n");
+			//pthread_mutex_lock(&mutex);
+			//printf("rentre dans le verrou\n");
 			r = read(fd[0], dataIn, sizeof(dataIn));
+			//pthread_mutex_unlock(&mutex);
+
+			printf("read passé ! \n");
 			// Allows client to exit
 			if (r == -1) {
 				msleep(1000);
@@ -425,14 +453,15 @@ void * clientListener(void * ClientDetail){
 			else{
 				dispatcher(dataIn);
 			}
-
-		}
+			printf("je suis boucle 2 et je vais boucler \n");
+		//}
 		printf("clientListener : boucle 2 ferme\n");
 	}
 	pthread_exit(NULL); //-> mettre pthread exit ne vire pas l'utilisateur quand il quitte (wtf)
 	printf("clientListener : ferme\n");
 	return NULL;
 }
+
 
 // The main function initializes and configures the instant messaging server,
 //listens for incoming client connections, 
@@ -489,38 +518,8 @@ int main()
 		pthread_mutex_unlock(&mutex);
 
 		
-		while (isServRunning) {
-    			// Effacer l'ensemble des descripteurs de fichiers à surveiller
-    			FD_ZERO(&readfds);
-
-    			// Ajouter le socket du serveur à l'ensemble
-   		 	FD_SET(serverSocket, &readfds);
-    			int maxfd = serverSocket;
-
-			pthread_mutex_lock(&mutex);
-   		 	for (int i = 0; i < clientCount; i++) {
-       			 	FD_SET(ClientList[i].sockID, &readfds);
-        			if (ClientList[i].sockID > maxfd) {
-           				maxfd = ClientList[i].sockID;
-        			}
-    			}
-
-			pthread_mutex_unlock(&mutex);
-
-   		 	// Attendre une activité sur un des descripteurs de fichiers
-    			activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
-    			if ((activity < 0) && (errno != EINTR)) {
-        			perror("Erreur lors de la sélection");
-        			exit(EXIT_FAILURE);
-    			}
-
-    			// Si une activité est détectée sur le socket du serveur, cela signifie une nouvelle connexion entrante
-    			if (FD_ISSET(serverSocket, &readfds)) {
-        			struct sockaddr_in clientAddr;
-        			int clientAddrLen = sizeof(clientAddr);
-        
-       		 		// Accepter la nouvelle connexion
-        			int newClientSocket = accept(serverSocket, (struct sockaddr*) &clientAddr, &clientAddrLen);
+		while (isServRunning) {	
+					int newClientSocket = accept(serverSocket, (struct sockaddr*) &ClientList[clientCount].clientAddr, &newClient);
         			if (newClientSocket == -1) {
             				perror("Erreur lors de l'acceptation de la connexion");
             				continue; // Passer à la prochaine itération de la boucle
@@ -528,30 +527,28 @@ int main()
 
         			// Ajouter le nouveau client à la liste des clients
         			pthread_mutex_lock(&mutex);
-				printf("est ce que j ai des soucis ici ?\n");
+
         			ClientList[clientCount].sockID = newClientSocket;
-				printf("main 1\n");
+
 				sockList[sockCount]=newClientSocket;
-				printf("main 2\n");
+
 				sockCount++;
-				printf("main 3\n");
         			clientCount++;
-				printf("main 4\n");
         			pthread_mutex_unlock(&mutex);
         
-        			// Ajouter le nouveau client à l'ensemble des descripteurs de fichiers à surveiller
+        			/*// Ajouter le nouveau client à l'ensemble des descripteurs de fichiers à surveiller
         			FD_SET(newClientSocket, &readfds);
         			if (newClientSocket > maxfd) {
             				maxfd = newClientSocket;
         			}
-
+					*/
         			// Créer un thread pour gérer la connexion du nouveau client
         			int thr = pthread_create(&thread[clientCount - 1], NULL, clientListener, (void *)&ClientList[clientCount - 1]);
         			if (thr != 0) {
             				fprintf(stderr, "Erreur lors de la création du thread client\n");
             				exit(EXIT_FAILURE);
         			}
-    			}
+    			
 		}
 
 		printf("main : fin boucle interne\n");
