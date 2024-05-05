@@ -21,7 +21,6 @@ int clientCount = 0, top = -1, sockCount =0;
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 bool isServRunning = true ;
 static pthread_t timer;
-static pthread_t recevoirData;
 int serverSocket;
 int sockList[1024];
 
@@ -376,7 +375,7 @@ void * clientListener(void * ClientDetail){
 	data.sockId = &arg;
 	data.fd = fd;	
 	
-	if (pthread_create(&recevoirData, NULL, recupereData, (void *)&data) != 0) {
+	if (pthread_create(&thread[clientCount -1], NULL, recupereData, (void *)&data) != 0) {
        			 printf("Erreur lors de la création du thread");
    		}
 		int r;
@@ -474,12 +473,6 @@ int main()
         			clientCount++;
         			pthread_mutex_unlock(&mutex);
         
-        			/*// Ajouter le nouveau client à l'ensemble des descripteurs de fichiers à surveiller
-        			FD_SET(newClientSocket, &readfds);
-        			if (newClientSocket > maxfd) {
-            				maxfd = newClientSocket;
-        			}
-					*/
         			// Créer un thread pour gérer la connexion du nouveau client
         			int thr = pthread_create(&thread[clientCount - 1], NULL, clientListener, (void *)&ClientList[clientCount - 1]);
         			if (thr != 0) {

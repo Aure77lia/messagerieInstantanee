@@ -80,16 +80,12 @@ void recvMessage(int sock)
 void sendMessage(int sock)
 {
 	char buff[MAX];
-//	int n;
 	ssize_t s;
 	while(1) { 
-		// like 'xor buff, buff'
 		bzero(buff, MAX);
-		//n = 0;
 		fgets(buff,sizeof(buff),stdin);	
 		//Message to send
 		printf("\33[2K\r");
-        	//while ((buff[n++] = getchar()) != '\n');
 		if(strlen(buff) != 1 && strlen(buff) <= 1020){
 			s = send(sock, buff, sizeof(buff), 0);
 			if(s == -1){
