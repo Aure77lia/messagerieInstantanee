@@ -247,9 +247,7 @@ void * dispatcher(char* dataIn){
 			strcat(data, sender);
 			strcat(data, " disconnected...\n");
 			broadcastClient(data);
-			//printf("djsjdjdjdjdsjk\n");
 			pthread_mutex_lock(&mutex);
-			//printf("djksjdhjkjkhddshjsdhjk\n");
 			close(clientSocket);
 			pthread_mutex_unlock(&mutex);
 			removeClient(indexClient);
@@ -472,7 +470,7 @@ int main()
 
 	// Threads each new connection to the server, and links a struct to each client
 	unsigned int newClient;
-	while(1){
+	while(isServRunning){
 		pthread_mutex_lock(&mutex);
 		if (clientCount==0){
 			pthread_mutex_unlock(&mutex);
@@ -488,61 +486,7 @@ int main()
 		newClient = ClientList[clientCount].len;
 		pthread_mutex_unlock(&mutex);
 
-		/*
-		while (1) {
-        
-		// Effacer l'ensemble des descripteurs de fichiers à surveiller
-        FD_ZERO(&readfds);
-
-        // Ajouter le socket du serveur à l'ensemble
-        FD_SET(serverSocket, &readfds);
-
-		int maxfd = serverSocket;
-
-		for (int i = 0; i < clientCount; i++) {
-        	FD_SET(ClientList[i].sockID, &readfds);
-        	if (ClientList[i].sockID > maxfd) {
-         	   maxfd = ClientList[i].sockID;
-        	}
-    	}
-    // Attendre une activité sur un des descripteurs de fichiers
-    activity = select(maxfd + 1, &readfds, NULL, NULL, NULL);
-    if ((activity < 0) && (errno != EINTR)) {
-        perror("Erreur lors de la sélection");
-        exit(EXIT_FAILURE);
-    }
-
-        // Si une activité est détectée sur le socket du serveur, cela signifie une nouvelle connexion entrante
-        if (FD_ISSET(serverSocket, &readfds)) {
-            struct sockaddr_in clientAddr;
-            int clientAddrLen = sizeof(clientAddr);
-            // Accepter la nouvelle connexion
-        if (ClientList[clientCount].sockID == -1){
-			fprintf(stderr, "cannot connect\n");
-			exit(0);
-		}
-        }
 		
-
-		ClientList[clientCount].sockID = accept(serverSocket, (struct sockaddr*) &ClientList[clientCount].clientAddr, &newClient);
-		if (ClientList[clientCount].sockID == -1){
-			fprintf(stderr, "cannot connect\n");
-			exit(0);
-		}
-        
-
-		int thr;
-		thr = pthread_create(&thread[clientCount], NULL, clientListener, (void *) &ClientList[clientCount]);
-		
-		if (thr != 0)
-		{
-			fprintf(stderr, "can't create thread. \n");
-			exit(0);
-		}
-		pthread_mutex_lock(&mutex);
-		clientCount ++;
-		pthread_mutex_unlock(&mutex);
-	}*/
 	while (isServRunning) {
     // Effacer l'ensemble des descripteurs de fichiers à surveiller
     FD_ZERO(&readfds);
