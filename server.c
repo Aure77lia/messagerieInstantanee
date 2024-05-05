@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <signal.h>
 
 #define MAX 160
 #define PORT 8080
@@ -81,6 +82,7 @@ void closeServer()
 		close(sockList[i]);
 	}
 	close(serverSocket);
+	exit(0);
 }
 
 int indexClientPseudo(char *pseudo)
@@ -111,9 +113,12 @@ int indexClientPseudo(char *pseudo)
 	return index;
 }
 
+void *timerThread();
+
 int removeClient(int index)
 {
 	pthread_mutex_lock(&mutex);
+	close(ClientList[index].sockID);
 	if (clientCount == 0)
 	{
 		return -1;
@@ -127,8 +132,15 @@ int removeClient(int index)
 		ClientList[i] = ClientList[i + 1];
 	}
 	clientCount--;
+	if(clientCount==0){
+		pthread_mutex_unlock(&mutex);
+		if (pthread_create(&timer, NULL, timerThread, NULL) != 0)
+					{
+						perror("dispatcher : error creation thread");
+					}
+	}
+	
 	pthread_mutex_unlock(&mutex);
-
 	return 0;
 }
 
@@ -143,12 +155,12 @@ void *timerThread()
 	{
 		printf("Aucun client connecté. Arrêt du serveur...\n");
 		closeServer();
-		exit(0);
 	}
 	pthread_mutex_unlock(&mutex);
 
 	return NULL;
 }
+void broadcastClient(char *dataOut);
 
 bool isClientConnected(int sockID)
 {
@@ -168,6 +180,20 @@ bool isClientConnected(int sockID)
 	pthread_mutex_unlock(&mutex);
 
 	return isConnected;
+}
+
+void handleClientDisconnect(int sockID) {
+    
+	int clientIndex = indexClientSock(sockID);
+    close(sockID);
+	char *str = malloc(sizeof(char)*(sizeof(" : has deconnected\n")+sizeof(ClientList[clientIndex].pseudo)));
+	
+	strcpy(str, ClientList[clientIndex].pseudo);
+	strcat(str, " : has deconnected\n");
+	removeClient(clientIndex);
+	broadcastClient(str);
+	
+    
 }
 
 // sleep() only works in seconds, msleep works in miliseconds
@@ -264,14 +290,6 @@ void *dispatcher(char *dataIn)
 				pthread_mutex_unlock(&mutex);
 				removeClient(indexClient);
 				pthread_mutex_lock(&mutex);
-
-				if (clientCount == 0)
-				{
-					if (pthread_create(&timer, NULL, timerThread, NULL) != 0)
-					{
-						perror("dispatcher : error creation thread");
-					}
-				}
 				pthread_mutex_unlock(&mutex);
 			}
 			free(data);
@@ -339,7 +357,7 @@ void *recupereData(void *arg)
 {
 
 	struct ThreadData *data = (struct ThreadData *)arg;
-	int *sockId = data->sockId, receved;
+	int *sockId = data->sockId;
 	int *fd = data->fd;
 	int sockID = *sockId;
 	char dataIn[1024], dataOut[1024];
@@ -350,9 +368,20 @@ void *recupereData(void *arg)
 		bzero(dataIn, 1024);
 		bzero(dataOut, 1024);
 		// Always & forever listen
-		receved = recv(sockID, dataIn, 1024, 0);
+		int bytesReceived = recv(sockID, dataIn, sizeof(dataIn), 0);
+        if (bytesReceived <= 0) {
+            // Erreur ou déconnexion du client
+            if (bytesReceived == 0) {
+				handleClientDisconnect(sockID);
+				pthread_exit(NULL);
 
-		dataIn[receved] = '\0';
+            } //else {
+               // printf("Erreur de réception des données du client.\n");
+            //}
+            // Gérer la déconnexion du client
+            
+		} else {
+		dataIn[bytesReceived] = '\0';
 		strcpy(dataOut, ClientList[index].color);
 		strcat(dataOut, "\t");
 		strcat(dataOut, ClientList[index].pseudo);
@@ -360,8 +389,13 @@ void *recupereData(void *arg)
 		strcat(dataOut, dataIn);
 		// Sends data through the pipe
 		pthread_mutex_lock(&mutex);
-		write(fd[1], dataOut, sizeof(dataOut));
+		if(write(fd[1], dataOut, sizeof(dataOut))==-1){
+			printf("Erreur écriture dans le pipe\n");
+			closeServer();
+		}
+	
 		pthread_mutex_unlock(&mutex);
+		}
 	}
 
 	pthread_exit(NULL);
@@ -407,6 +441,7 @@ void *clientListener(void *ClientDetail)
 	if (receved == -1)
 	{
 		printf("Error during the reception");
+		closeServer();
 	}
 	// send /help when client is connected to see all commands
 
@@ -429,13 +464,13 @@ void *clientListener(void *ClientDetail)
 	}
 	int r;
 	// Parent process | its goal is to parse the data given by the listener
+	
 	while (isClientConnected(clientDetail->sockID))
 	{
 
 		bzero(dataIn, 1024);
 		bzero(dataOut, 1024);
 		r = read(fd[0], dataIn, sizeof(dataIn));
-
 		// Allows client to exit
 		if (r == -1)
 		{
@@ -518,10 +553,9 @@ int main()
 			if (newClientSocket == -1)
 			{
 				perror("Erreur lors de l'acceptation de la connexion");
-				continue; // Passer à la prochaine itération de la boucle
+				continue; 
 			}
 
-			// Ajouter le nouveau client à la liste des clients
 			pthread_mutex_lock(&mutex);
 
 			ClientList[clientCount].sockID = newClientSocket;
@@ -532,13 +566,7 @@ int main()
 			clientCount++;
 			pthread_mutex_unlock(&mutex);
 
-			/*// Ajouter le nouveau client à l'ensemble des descripteurs de fichiers à surveiller
-			FD_SET(newClientSocket, &readfds);
-			if (newClientSocket > maxfd) {
-					maxfd = newClientSocket;
-			}
-			*/
-			// Créer un thread pour gérer la connexion du nouveau client
+			
 			int thr = pthread_create(&thread[clientCount - 1], NULL, clientListener, (void *)&ClientList[clientCount - 1]);
 			if (thr != 0)
 			{
