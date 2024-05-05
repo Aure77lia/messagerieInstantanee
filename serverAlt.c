@@ -155,109 +155,99 @@ char * parseWord( const char str[], size_t pos ){
     return p;
 }
 
+
 // The broadcastClient function is used to send a message to all clients connected to the instant messaging server.
 // *dataOut is the message to broadcast to all connected clients.
 
 void broadcastClient(char *dataOut) {
-    char *buffer = malloc(1024 * sizeof(char)); 
     
-    if (buffer == NULL) {
-        fprintf(stderr, "Erreur : échec de l'allocation de mémoire\n");
-        return; // Gestion de l'erreur d'allocation de mémoire
-    }
-    
+//printf("broadcast :%s\n",dataOut);
     for (int i = 0; i < clientCount; i++) {
         send(ClientList[i].sockID, dataOut, 1024, 0); 
     }
     
-    free(buffer); 
+    printf("%s", dataOut);
 }
 
 
 // The Dispatcher function ensures the reception, analysis and distribution of messages between clients
-void * Dispatcher(){
-	char data[1024], dataTMP[1024];
-	int isNull;
-	while(1){
-		bzero(data, 1024);
-		bzero(dataTMP, 1024);
-		
-		isNull = pop(stack, &top, data);
-		if(isNull != -1){
-			//pop(stack, &top, data);
-			msleep(20);
+void * DispatcherBis(char* dataIn){
+	char* data;
+	int err;
+	// identifies the sender of the message
+	char *sender = parseWord(dataIn, 0);
+	char *thirdWord = parseWord(dataIn, 2);
+	int clientSocket;
+       	//Gets the client's socketID
+	int indexClient = indexClientPseudo(sender);
 
-			// identifies the sender of the message
-			char *sender = parseWord(data, 0);
-			char *thirdWord = parseWord(data, 2);
-
-			int clientSocket;
-            /*for(int i = 0; i < clientCount; i++){
-				if ((strncmp(sender, ClientList[i+1].pseudo, strlen(ClientList[i+1].pseudo))) == 0){
-					clientSocket = ClientList[i].sockID;
+	pthread_mutex_lock(&mutex);
+	clientSocket = ClientList[indexClient].sockID;
+	if ((strncmp(thirdWord, "/exit", 5)) == 0) {
+		data = malloc(sizeof(char)*sizeof("\033[0;31m"));
+		//strcpy(data, "\033[0;32m");
+		err = send(clientSocket, "/exit", sizeof("/exit"), 0);
+		if (err == -1){
+			fprintf(stderr, "dispatcher : exit failed");
+		}
+		else {
+			data = realloc(data, sizeof(char) * (sizeof(sender)+sizeof(" disconnected..\n")));
+			strcat(data, sender);
+			strcat(data, " disconnected...\n");
+			broadcastClient(data);
+			close(clientSocket);
+			clientCount--;
+			removeClient(indexClient);
+			if (clientCount == 0){
+				if (pthread_create(&timer, NULL, timerThread, NULL) != 0){
+					perror("dispatcher : error creation thread");
 				}
-			}*/
-            //Gets the client's socketID
-			int indexClient = indexClientPseudo(sender);
-			//pthread_mutex_lock(&mutex);
-			clientSocket = ClientList[indexClient].sockID;
-
-			if ((strncmp(thirdWord, "/exit", 5)) == 0) {
-				send(clientSocket, "/exit", sizeof("/exit"), 0);
-				strcpy(dataTMP, sender);
-				strcat(dataTMP, " disconnected...\n");
-				broadcastClient(dataTMP);
-				close(clientSocket);
-				clientCount--;
-				removeClient(indexClient);
-
-			}
-			// Allows to list all online clients, and sends it to the client
-			
-
-			else if ((strncmp(thirdWord, "/list", 5)) == 0) {
-    			strcpy(dataTMP, "\033[0;32m");
-    			for (int i = 0; i < clientCount; i++) {
-        			if (ClientList[i].pseudo != NULL && strncmp(ClientList[i].pseudo, "\0", 1) != 0){
-            		strcat(dataTMP, ClientList[i].pseudo);
-            		strcat(dataTMP, "\n");
-        			}
-    			}
-    			send(clientSocket, dataTMP, strlen(dataTMP), 0); // Directly send to the requesting client
-			}
-
-			// Gives helpful commands
-			else if ((strncmp(thirdWord, "/help", 5)) == 0) {
-				strcpy(dataTMP, "\033[0;32m");
-            	strcat(dataTMP, "Possible commands :\n\t/list to list all connected clients\n");
-				strcat(dataTMP, "\t/exit to exit your session");
-				strcat(dataTMP, "\tctrl+c to stop message flow. To see messages again, send a message.");
-				//dataTMP[strlen(dataTMP)] = '\n';
-            	strcat(dataTMP, "\n");
-    			send(clientSocket, dataTMP, strlen(dataTMP), 0); // Directly send to the requesting client
-			}
-				/*strcpy(dataTMP, "\033[0;32m");
-				strcat(dataTMP, "Possible commands :\n\t/list to list all connected clients\n");
-				strcat(dataTMP, "\t/exit to exit your session");
-				strcat(dataTMP, "\tctrl+c to stop message flow. To see messages again, send a message.");
-				dataTMP[strlen(dataTMP)] = '\n';
-				for(int i = 0; i < clientCount; i++){
-					if ((strncmp(sender, ClientList[i+1].pseudo, strlen(ClientList[i+1].pseudo))) == 0){
-						send(ClientList[i].sockID, dataTMP, strlen(dataTMP), 0);
-					}
-				}
-			} */
-
-			// Sends message to all connected clients
-			else {
-				strcpy(dataTMP, "\033[0;31m");
-				strcat(dataTMP, data);
-				printf("%s", dataTMP);
-				broadcastClient(dataTMP);
 			}
 		}
+		free(data);
 	}
-	//pthread_mutex_unlock(&mutex);
+	// Allows to list all online clients, and sends it to the client
+		
+	else if ((strncmp(thirdWord, "/list", 5)) == 0) {
+		data = malloc(sizeof(char)*sizeof("\033[0;32m"));
+		//strcpy(data, "\033[0;32m");
+		for (int i = 0; i < clientCount; i++) {
+			data = realloc(data, sizeof(char) * (sizeof(ClientList[i].pseudo)+sizeof("\n")));
+     			strcat(data, ClientList[i].pseudo);
+			strcat(data, "\n");
+		}
+		err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
+		if (err == -1){
+			fprintf(stderr, "dispatcher : /list failed");
+		}
+		free(data);
+	}
+
+	// Gives helpful commands
+	else if ((strncmp(thirdWord, "/help", 5)) == 0) {
+		data = malloc(sizeof(char)*sizeof("\033[0;32m"));
+		//strcpy(data, "\033[0;32m");
+		data = realloc(data, sizeof(char) * (sizeof("Possible commands :\n\t/list to list all connected clients\n")+sizeof("\t/exit to exit your session\n")+sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
+
+		strcat(data, "Possible commands :\n\t/list to list all connected clients\n");
+		strcat(data, "\t/exit to exit your session\n");
+		strcat(data, "\tctrl+c to stop message flow. To see messages again, send a message.\n");
+		err = send(clientSocket, data, strlen(data), 0); // Directly send to the requesting client
+		if (err == -1){
+			fprintf(stderr, "dispatcher : /help failed");
+		}
+		free(data);
+	}
+			
+	// Sends message to all connected clients
+	else {
+		if(sizeof(dataIn) < 1000){
+		//	strcpy(dataIn, "\033[0;37m");
+		}
+		broadcastClient(dataIn);
+	}
+	
+	pthread_mutex_unlock(&mutex);
 
 	return NULL;
 }
@@ -326,14 +316,8 @@ void * clientListener(void * ClientDetail){
 			bzero(dataOut, 1024);
 			//int read = recv(clientSocket, dataIn, 1024, 0);
 			r = read(fd[0], dataIn, sizeof(dataIn));
-			char *command = parseWord(dataIn, 2);
-			// printf("%s : %s", Client[index].pseudo, dataIn);
 			// Allows client to exit
-			if (r == -1 || (strncmp(command, "/exit", 5)) == 0) {
-				broadcastClient(dataIn);
-				//pthread_mutex_lock(&mutex);
-				//push(stack, &top, dataIn);
-				//pthread_mutex_unlock(&mutex);
+			if (r == -1) {
 				msleep(1000);
 				close(clientSocket);
 				clientDetail -> sockID = 0;
@@ -342,7 +326,8 @@ void * clientListener(void * ClientDetail){
 
 			// Send message to all clients
 			else{
-				broadcastClient(dataIn);
+				DispatcherBis(dataIn);
+				//broadcastClient(dataIn);
 				//pthread_mutex_lock(&mutex);
 				//push(stack, &top, dataIn);
 				//pthread_mutex_unlock(&mutex);
@@ -386,7 +371,7 @@ int main()
 	}
 	else printf("Server listening...\n");
 
-	pthread_create(&thread_dispatcher, NULL, Dispatcher, NULL);
+	//pthread_create(&thread_dispatcher, NULL, DispatcherBis, NULL);
 
 	// Threads each new connection to the server, and links a struct to each client
 	unsigned int newClient;
@@ -396,10 +381,10 @@ int main()
 		pthread_mutex_lock(&mutex);
 		if (clientCount==0){
 			if (pthread_create(&timer, NULL, timerThread, NULL) != 0) {
-                perror("Erreur lors de la création du thread du temporisateur");
-                pthread_mutex_unlock(&mutex);
-                return 1;
-            }
+                		perror("Erreur lors de la création du thread du temporisateur");
+                		pthread_mutex_unlock(&mutex);
+                		return 1;
+        	    	}
 		}
 		pthread_mutex_unlock(&mutex);
 

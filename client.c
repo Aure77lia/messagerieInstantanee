@@ -28,10 +28,8 @@ int msleep(unsigned int tms) {
 }
 
 void intHandler(){
-	pthread_mutex_lock(&mutex_comp_signal);
 	printf("Server : message flow stopped, to see the messages again, send a message\n");
 	stopRunning = 1;
-	pthread_mutex_unlock(&mutex_comp_signal);
 }
 
 
@@ -80,25 +78,25 @@ void recvMessage(int sock)
 void sendMessage(int sock)
 {
 	char buff[MAX];
-	int n;
+	//int n;
 	ssize_t s;
 	while(1) { 
 		// like 'xor buff, buff'
 		bzero(buff, MAX);
-		n = 0;
-		//fgets(buff,sizeof(buff),stdin);	
+		//n = 0;
+		fgets(buff,sizeof(buff),stdin);	
 		//Message to send
 		printf("\33[2K\r");
-        	while ((buff[n++] = getchar()) != '\n');
-		if(strlen(buff) != 1 && strlen(buff) <= 1020){
+        	//while ((buff[n++] = getchar()) != '\n');
+		//if(strlen(buff) != 1 && strlen(buff) <= 1020){
 			s = send(sock, buff, sizeof(buff), 0);
 			if(s == -1){
 				fprintf(stderr,"sendMessage : message could not be sent\n");
 				exit(0);
 			}
-		}
-		else 
-			printf("Invalid message size...\n");
+		//}
+		//else 
+		//	printf("Invalid message size...\n");
 		
         	if ((strncmp(buff, "/exit", sizeof("/exit"))) == 0) {
 			break;
@@ -111,7 +109,6 @@ void sendMessage(int sock)
 // It forks a child process for sending messages and another for receiving messages. It finally closes the socket.
 int main()
 {
-	signal(SIGINT,intHandler);
 	int sock;
 	struct sockaddr_in servaddr;
 
@@ -153,6 +150,7 @@ int main()
 		sendMessage(sock);
 	} else 
 	{
+		signal(SIGINT,intHandler);
 		recvMessage(sock);
 	}
 	// close the socket
