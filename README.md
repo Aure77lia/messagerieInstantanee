@@ -1,4 +1,5 @@
 # messagerieInstantanee
+*teste sous mac*
 ## Auteurs :
 Pauline Fourel, Baptiste Matrat, Aurelia Gomes
 ### lancer le serveur seuement 
