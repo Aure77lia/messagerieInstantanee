@@ -297,9 +297,9 @@ void *dispatcher(char *dataIn)
 			}
 			free(data);
 			}
-			if (err == -1 || data == NULL)
+			if (data == NULL)
 			{
-				fprintf(stderr, "dispatcher : /help failed\n");
+				fprintf(stderr, "dispatcher : /exit failed\n");
 			}
 		}
 		// Allows to list all online clients, and sends it to the client
@@ -328,9 +328,9 @@ void *dispatcher(char *dataIn)
 			free(data);
 			}
 			}
-			if (err == -1 || data == NULL)
+			if ( data == NULL)
 			{
-				fprintf(stderr, "dispatcher : /help failed\n");
+				fprintf(stderr, "dispatcher : /listfailed\n");
 			}
 		}
 
