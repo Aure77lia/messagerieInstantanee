@@ -337,11 +337,12 @@ void *dispatcher(char *dataIn)
 		// Gives helpful commands
 		else if ((strncmp(thirdWord, "/help", 5)) == 0)
 		{
+			err = 0;
 			data = malloc(sizeof(char) * sizeof("\033[0;37m"));
 			if(data != NULL){
 
 				strcpy(data, "\033[0;37m");
-				data = realloc(data, sizeof(char) * (sizeof("Possible commands :\n/help to see all possible commands\n\t/list to list all connected clients\n") + sizeof("\t/exit to exit your session\n") + sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
+				data = realloc(data, sizeof(char) * (sizeof("\033[0;37m Possible commands :\n/help to see all possible commands\n\t/list to list all connected clients\n") + sizeof("\t/exit to exit your session\n") + sizeof("\tctrl+c to stop message flow. To see messages again, send a message.\n")));
 
 				strcat(data, "Possible commands :\n\t/help to see all possible commands\n");
 				strcat(data, "\t/list to list all connected clients\n");
