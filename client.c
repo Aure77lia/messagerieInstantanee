@@ -141,6 +141,7 @@ int main()
 	//add to the pseudo the pid of the user (process id of the user)
 	char id[10];
 	snprintf(id,10,"(%d)",getpid());
+	//use of strcat to concatenate
 	strcat(pseudo,id);
 	write(sock, pseudo, sizeof(pseudo));	
 		
